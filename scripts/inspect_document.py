@@ -25,6 +25,11 @@ def parse_args() -> argparse.Namespace:
         metavar=("START", "END"),
         help="Optional inclusive 1-based page range to inspect.",
     )
+    parser.add_argument(
+        "--split-pages",
+        action="store_true",
+        help="Inspect each page in --page-range separately and write a batch summary.",
+    )
     return parser.parse_args()
 
 
@@ -54,11 +59,20 @@ def validate_page_range(page_range: list[int] | None) -> tuple[int, int] | None:
     return start, end
 
 
+def validate_split_pages(split_pages: bool, page_range: tuple[int, int] | None) -> None:
+    if split_pages and page_range is None:
+        raise ValueError("--split-pages requires --page-range START END.")
+
+
 def build_output_dir(document_path: Path, page_range: tuple[int, int] | None) -> Path:
     output_name = document_path.stem
     if page_range is not None:
         output_name = f"{output_name}_pages_{page_range[0]}_{page_range[1]}"
     return Path("data/parsed") / output_name
+
+
+def build_split_output_dir(document_path: Path, page_range: tuple[int, int]) -> Path:
+    return Path("data/parsed") / f"{document_path.stem}_pages_{page_range[0]}_{page_range[1]}_split"
 
 
 def safe_model_dump(value: Any) -> Any:
@@ -273,27 +287,21 @@ def build_report(summary: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
-    args = parse_args()
-    print("Validating document...")
-    document_path = validate_document_path(args.document_path)
-    page_range = validate_page_range(args.page_range)
-    output_dir = build_output_dir(document_path, page_range)
+def inspect_with_docling(
+    document_converter: Any,
+    document_path: Path,
+    output_dir: Path,
+    page_range: tuple[int, int] | None,
+    docling_version: str,
+    import_seconds: float,
+) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    print("Importing Docling...")
-    import_started_at = time.perf_counter()
-    from docling.document_converter import DocumentConverter
-
-    import_seconds = round(time.perf_counter() - import_started_at, 3)
-    docling_version = metadata.version("docling")
-
     print("Starting conversion...")
     conversion_started_at = time.perf_counter()
     convert_kwargs = {}
     if page_range is not None:
         convert_kwargs["page_range"] = page_range
-    result = DocumentConverter().convert(document_path, **convert_kwargs)
+    result = document_converter.convert(document_path, **convert_kwargs)
     conversion_seconds = round(time.perf_counter() - conversion_started_at, 3)
     print("Conversion finished.")
     docling_document = result.document
@@ -376,6 +384,154 @@ def main() -> None:
         f"{summary['counts']['pictures']} pictures"
     )
     print("Done.")
+    return summary
+
+
+def build_batch_report(batch_summary: dict[str, Any]) -> str:
+    lines = [
+        "Docling Split-Page Batch Report",
+        "",
+        f"Source: {batch_summary['source']['path']}",
+        f"Requested page range: {batch_summary['source']['page_range']}",
+        f"Output directory: {batch_summary['output_dir']}",
+        "",
+        "Results",
+    ]
+
+    for result in batch_summary["results"]:
+        if result["ok"]:
+            counts = result["counts"]
+            lines.append(
+                f"- Page {result['page_no']}: {result['status']} in "
+                f"{result['conversion_seconds']}s "
+                f"({counts['texts']} text, {counts['tables']} tables, "
+                f"{counts['pictures']} pictures, {result['error_count']} errors)"
+            )
+        else:
+            lines.append(
+                f"- Page {result['page_no']}: FAILED in "
+                f"{result['elapsed_seconds']}s ({result['error_type']}: {result['error']})"
+            )
+
+    return "\n".join(lines) + "\n"
+
+
+def inspect_split_pages(
+    document_converter: Any,
+    document_path: Path,
+    page_range: tuple[int, int],
+    docling_version: str,
+    import_seconds: float,
+) -> dict[str, Any]:
+    batch_output_dir = build_split_output_dir(document_path, page_range)
+    batch_output_dir.mkdir(parents=True, exist_ok=True)
+
+    batch_summary: dict[str, Any] = {
+        "source": {
+            "path": str(document_path),
+            "filename": document_path.name,
+            "suffix": document_path.suffix.lower(),
+            "size_bytes": document_path.stat().st_size,
+            "page_range": page_range,
+        },
+        "parser": {
+            "name": "docling",
+            "docling_version": docling_version,
+        },
+        "timings": {
+            "docling_import_seconds": import_seconds,
+        },
+        "output_dir": str(batch_output_dir),
+        "results": [],
+    }
+
+    start_page, end_page = page_range
+    for page_no in range(start_page, end_page + 1):
+        print(f"Inspecting page {page_no}...")
+        page_started_at = time.perf_counter()
+        page_output_dir = batch_output_dir / f"page_{page_no}"
+        try:
+            page_summary = inspect_with_docling(
+                document_converter=document_converter,
+                document_path=document_path,
+                output_dir=page_output_dir,
+                page_range=(page_no, page_no),
+                docling_version=docling_version,
+                import_seconds=import_seconds,
+            )
+            batch_summary["results"].append(
+                {
+                    "page_no": page_no,
+                    "ok": True,
+                    "status": page_summary["conversion"]["status"],
+                    "conversion_seconds": page_summary["timings"]["conversion_seconds"],
+                    "error_count": len(page_summary["conversion"]["errors"]),
+                    "counts": page_summary["counts"],
+                    "outputs": page_summary["outputs"],
+                }
+            )
+        except Exception as exc:
+            elapsed_seconds = round(time.perf_counter() - page_started_at, 3)
+            batch_summary["results"].append(
+                {
+                    "page_no": page_no,
+                    "ok": False,
+                    "elapsed_seconds": elapsed_seconds,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "outputs": {
+                        "directory": str(page_output_dir),
+                    },
+                }
+            )
+            print(f"Page {page_no} failed: {type(exc).__name__}: {exc}")
+
+        write_json(batch_output_dir / "batch_summary.json", batch_summary)
+        (batch_output_dir / "batch_report.txt").write_text(
+            build_batch_report(batch_summary), encoding="utf-8"
+        )
+
+    print(f"Split-page batch output directory: {batch_output_dir}")
+    print("Split-page batch done.")
+    return batch_summary
+
+
+def main() -> None:
+    args = parse_args()
+    print("Validating document...")
+    document_path = validate_document_path(args.document_path)
+    page_range = validate_page_range(args.page_range)
+    validate_split_pages(args.split_pages, page_range)
+
+    print("Importing Docling...")
+    import_started_at = time.perf_counter()
+    from docling.document_converter import DocumentConverter
+
+    import_seconds = round(time.perf_counter() - import_started_at, 3)
+    docling_version = metadata.version("docling")
+    document_converter = DocumentConverter()
+
+    if args.split_pages:
+        if page_range is None:
+            raise ValueError("--split-pages requires --page-range START END.")
+        inspect_split_pages(
+            document_converter=document_converter,
+            document_path=document_path,
+            page_range=page_range,
+            docling_version=docling_version,
+            import_seconds=import_seconds,
+        )
+        return
+
+    output_dir = build_output_dir(document_path, page_range)
+    inspect_with_docling(
+        document_converter=document_converter,
+        document_path=document_path,
+        output_dir=output_dir,
+        page_range=page_range,
+        docling_version=docling_version,
+        import_seconds=import_seconds,
+    )
 
 
 if __name__ == "__main__":
