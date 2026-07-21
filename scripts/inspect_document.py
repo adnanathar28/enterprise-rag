@@ -18,6 +18,13 @@ def parse_args() -> argparse.Namespace:
         description="Inspect raw Docling output for a PDF or DOCX BRD."
     )
     parser.add_argument("document_path", type=Path, help="Path to an approved BRD PDF or DOCX.")
+    parser.add_argument(
+        "--page-range",
+        nargs=2,
+        type=int,
+        metavar=("START", "END"),
+        help="Optional inclusive 1-based page range to inspect.",
+    )
     return parser.parse_args()
 
 
@@ -33,6 +40,25 @@ def validate_document_path(document_path: Path) -> Path:
             f"Unsupported file type '{resolved_path.suffix}'. Expected one of: {supported}"
         )
     return resolved_path
+
+
+def validate_page_range(page_range: list[int] | None) -> tuple[int, int] | None:
+    if page_range is None:
+        return None
+
+    start, end = page_range
+    if start < 1 or end < 1:
+        raise ValueError("Page range values must be positive 1-based page numbers.")
+    if start > end:
+        raise ValueError(f"Invalid page range: start page {start} is after end page {end}.")
+    return start, end
+
+
+def build_output_dir(document_path: Path, page_range: tuple[int, int] | None) -> Path:
+    output_name = document_path.stem
+    if page_range is not None:
+        output_name = f"{output_name}_pages_{page_range[0]}_{page_range[1]}"
+    return Path("data/parsed") / output_name
 
 
 def safe_model_dump(value: Any) -> Any:
@@ -249,21 +275,30 @@ def build_report(summary: dict[str, Any]) -> str:
 
 def main() -> None:
     args = parse_args()
+    print("Validating document...")
     document_path = validate_document_path(args.document_path)
-    output_dir = Path("data/parsed") / document_path.stem
+    page_range = validate_page_range(args.page_range)
+    output_dir = build_output_dir(document_path, page_range)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    print("Importing Docling...")
     import_started_at = time.perf_counter()
     from docling.document_converter import DocumentConverter
 
     import_seconds = round(time.perf_counter() - import_started_at, 3)
     docling_version = metadata.version("docling")
 
+    print("Starting conversion...")
     conversion_started_at = time.perf_counter()
-    result = DocumentConverter().convert(document_path)
+    convert_kwargs = {}
+    if page_range is not None:
+        convert_kwargs["page_range"] = page_range
+    result = DocumentConverter().convert(document_path, **convert_kwargs)
     conversion_seconds = round(time.perf_counter() - conversion_started_at, 3)
+    print("Conversion finished.")
     docling_document = result.document
 
+    print("Writing outputs...")
     raw_docling = docling_document.export_to_dict()
     markdown = docling_document.export_to_markdown(
         page_break_placeholder="\n\n<!-- page break -->\n\n"
@@ -277,6 +312,7 @@ def main() -> None:
             "filename": document_path.name,
             "suffix": document_path.suffix.lower(),
             "size_bytes": document_path.stat().st_size,
+            "page_range": page_range,
         },
         "parser": {
             "name": "docling",
@@ -339,6 +375,7 @@ def main() -> None:
         f"{summary['counts']['tables']} tables, "
         f"{summary['counts']['pictures']} pictures"
     )
+    print("Done.")
 
 
 if __name__ == "__main__":
