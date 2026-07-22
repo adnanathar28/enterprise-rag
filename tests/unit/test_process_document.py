@@ -67,3 +67,34 @@ def test_split_processing_keeps_failed_pages_non_fatal(monkeypatch) -> None:
     assert len(result.diagnostics) == 1
     assert result.diagnostics[0].page_number == 2
     assert result.diagnostics[0].message == "synthetic page failure"
+
+
+def test_split_processing_records_page_timeout(monkeypatch) -> None:
+    process_document_script = load_process_document_script()
+
+    def fake_process_document_with_timeout(
+        document_path: Path,
+        page_number: int,
+        timeout_seconds: float | None,
+    ) -> ParsedDocument:
+        if page_number == 2:
+            raise TimeoutError("Page 2 exceeded timeout of 1.0 seconds.")
+        return parsed_page(page_number)
+
+    monkeypatch.setattr(
+        process_document_script,
+        "process_document_with_timeout",
+        fake_process_document_with_timeout,
+    )
+
+    result = process_document_script.process_split_pages(
+        Path("sample.pdf"),
+        (1, 2),
+        page_timeout_seconds=1.0,
+    )
+
+    assert result.parser_metadata is not None
+    assert result.parser_metadata.parse_status == "partial_success"
+    assert [page.parse_status for page in result.pages] == ["success", "failed"]
+    assert result.diagnostics[0].error_type == "TimeoutError"
+    assert result.diagnostics[0].message == "Page 2 exceeded timeout of 1.0 seconds."

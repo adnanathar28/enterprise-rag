@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing as mp
 from datetime import UTC, datetime
 from pathlib import Path
+from queue import Empty
 from typing import Any
 
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
@@ -42,6 +44,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Process each page in --page-range separately and merge one ParsedDocument.",
     )
+    parser.add_argument(
+        "--page-timeout-seconds",
+        type=float,
+        help="Optional per-page timeout for --split-pages processing.",
+    )
     return parser.parse_args()
 
 
@@ -74,6 +81,14 @@ def validate_page_range(page_range: list[int] | None) -> tuple[int, int] | None:
 def validate_split_pages(split_pages: bool, page_range: tuple[int, int] | None) -> None:
     if split_pages and page_range is None:
         raise ValueError("--split-pages requires --page-range START END.")
+
+
+def validate_page_timeout(page_timeout_seconds: float | None) -> float | None:
+    if page_timeout_seconds is None:
+        return None
+    if page_timeout_seconds <= 0:
+        raise ValueError("--page-timeout-seconds must be greater than 0.")
+    return page_timeout_seconds
 
 
 def build_output_dir(document_path: Path, page_range: tuple[int, int] | None) -> Path:
@@ -113,6 +128,7 @@ def build_processing_summary(
     document_path: Path,
     page_range: tuple[int, int] | None,
     split_pages: bool,
+    page_timeout_seconds: float | None,
     output_path: Path,
     summary_path: Path,
 ) -> dict[str, Any]:
@@ -179,6 +195,7 @@ def build_processing_summary(
         },
         "processing": {
             "split_pages": split_pages,
+            "page_timeout_seconds": page_timeout_seconds,
             "parse_status": parse_status,
             "parser_name": parsed_document.metadata.parser_name,
             "parser_version": parsed_document.metadata.parser_version,
@@ -367,6 +384,53 @@ def process_document(document_path: Path, page_range: tuple[int, int] | None) ->
     return DoclingDocumentParser(page_range=page_range).parse(document_path)
 
 
+def process_document_worker(
+    document_path: str,
+    page_number: int,
+    result_queue: Any,
+) -> None:
+    try:
+        parsed_document = process_document(Path(document_path), (page_number, page_number))
+        result_queue.put(("success", parsed_document.model_dump(mode="json")))
+    except Exception as exc:
+        result_queue.put(("error", type(exc).__name__, str(exc)))
+
+
+def process_document_with_timeout(
+    document_path: Path,
+    page_number: int,
+    timeout_seconds: float | None,
+) -> ParsedDocument:
+    if timeout_seconds is None:
+        return process_document(document_path, (page_number, page_number))
+
+    context = mp.get_context("spawn")
+    result_queue = context.Queue()
+    process = context.Process(
+        target=process_document_worker,
+        args=(str(document_path), page_number, result_queue),
+    )
+    process.start()
+    process.join(timeout_seconds)
+
+    if process.is_alive():
+        process.terminate()
+        process.join()
+        raise TimeoutError(f"Page {page_number} exceeded timeout of {timeout_seconds} seconds.")
+
+    try:
+        result = result_queue.get_nowait()
+    except Empty as exc:
+        raise RuntimeError(f"Page {page_number} process exited without a result.") from exc
+
+    status = result[0]
+    if status == "success":
+        return ParsedDocument.model_validate(result[1])
+    error_type = result[1]
+    error_message = result[2]
+    raise RuntimeError(f"{error_type}: {error_message}")
+
+
 def build_failed_page_document(
     document_path: Path,
     page_number: int,
@@ -409,13 +473,21 @@ def build_failed_page_document(
     )
 
 
-def process_split_pages(document_path: Path, page_range: tuple[int, int]) -> ParsedDocument:
+def process_split_pages(
+    document_path: Path,
+    page_range: tuple[int, int],
+    page_timeout_seconds: float | None = None,
+) -> ParsedDocument:
     parsed_pages = []
     start_page, end_page = page_range
     for page_no in range(start_page, end_page + 1):
         print(f"Processing page {page_no}...")
         try:
-            page_document = process_document(document_path, (page_no, page_no))
+            page_document = process_document_with_timeout(
+                document_path,
+                page_no,
+                page_timeout_seconds,
+            )
             parsed_pages.append(prefix_document_ids_for_split_page(page_document, page_no))
         except Exception as exc:
             print(f"Page {page_no} failed: {type(exc).__name__}: {exc}")
@@ -429,6 +501,7 @@ def main() -> None:
     document_path = validate_document_path(args.document_path)
     page_range = validate_page_range(args.page_range)
     validate_split_pages(args.split_pages, page_range)
+    page_timeout_seconds = validate_page_timeout(args.page_timeout_seconds)
 
     if args.split_pages:
         if page_range is None:
@@ -442,7 +515,7 @@ def main() -> None:
     if args.split_pages:
         if page_range is None:
             raise ValueError("--split-pages requires --page-range START END.")
-        parsed_document = process_split_pages(document_path, page_range)
+        parsed_document = process_split_pages(document_path, page_range, page_timeout_seconds)
     else:
         parsed_document = process_document(document_path, page_range)
 
@@ -457,6 +530,7 @@ def main() -> None:
             document_path=document_path,
             page_range=page_range,
             split_pages=args.split_pages,
+            page_timeout_seconds=page_timeout_seconds,
             output_path=output_path,
             summary_path=summary_path,
         ),
