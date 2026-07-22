@@ -6,7 +6,17 @@ from pathlib import Path
 from typing import Any
 
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
-from brd_knowledge.schemas.document import ParsedDocument, ParserMetadata
+from brd_knowledge.schemas.document import (
+    DocumentBlock,
+    ParsedDocument,
+    ParsedImage,
+    ParserMetadata,
+    ParseStatus,
+)
+from brd_knowledge.schemas.requirement import ExtractedRequirement
+from brd_knowledge.schemas.section import DocumentSection
+from brd_knowledge.schemas.source import SourceReference
+from brd_knowledge.schemas.table import ParsedTable, TableCell
 
 SUPPORTED_SUFFIXES = {".pdf", ".docx"}
 
@@ -85,7 +95,7 @@ def write_json(path: Path, value: Any) -> None:
     )
 
 
-def merge_parse_statuses(documents: list[ParsedDocument]) -> str:
+def merge_parse_statuses(documents: list[ParsedDocument]) -> ParseStatus:
     statuses = [
         page.parse_status
         for document in documents
@@ -97,6 +107,95 @@ def merge_parse_statuses(documents: list[ParsedDocument]) -> str:
     if statuses and all(status == "failed" for status in statuses):
         return "failed"
     return "partial_success"
+
+
+def prefixed_id(page_number: int, value: str | None) -> str | None:
+    if value is None:
+        return None
+    prefix = f"page_{page_number}_"
+    if value.startswith(prefix):
+        return value
+    return f"{prefix}{value}"
+
+
+def prefix_source_reference_ids(source: SourceReference | None, page_number: int) -> None:
+    if source is None:
+        return
+    source.section_id = prefixed_id(page_number, source.section_id)
+    source.block_id = prefixed_id(page_number, source.block_id)
+    source.table_id = prefixed_id(page_number, source.table_id)
+    source.cell_id = prefixed_id(page_number, source.cell_id)
+
+
+def prefix_block_ids(block: DocumentBlock, page_number: int) -> None:
+    block.block_id = prefixed_id(page_number, block.block_id) or block.block_id
+    prefix_source_reference_ids(block.source, page_number)
+
+
+def prefix_table_cell_ids(cell: TableCell, table_id: str, page_number: int) -> None:
+    cell.cell_id = prefixed_id(page_number, cell.cell_id)
+    prefix_source_reference_ids(cell.source, page_number)
+    if cell.source is not None:
+        cell.source.table_id = table_id
+
+
+def prefix_table_ids(table: ParsedTable, page_number: int) -> None:
+    table.table_id = prefixed_id(page_number, table.table_id) or table.table_id
+    prefix_source_reference_ids(table.source, page_number)
+    for cell in table.cells:
+        prefix_table_cell_ids(cell, table.table_id, page_number)
+    for row in table.rows:
+        for cell in row.cells:
+            prefix_table_cell_ids(cell, table.table_id, page_number)
+
+
+def prefix_image_ids(image: ParsedImage, page_number: int) -> None:
+    image.image_id = prefixed_id(page_number, image.image_id) or image.image_id
+    prefix_source_reference_ids(image.source, page_number)
+
+
+def prefix_section_ids(section: DocumentSection, page_number: int) -> None:
+    section.section_id = prefixed_id(page_number, section.section_id) or section.section_id
+    prefix_source_reference_ids(section.source, page_number)
+    if section.heading_block is not None:
+        prefix_block_ids(section.heading_block, page_number)
+    for block in section.blocks:
+        prefix_block_ids(block, page_number)
+    for paragraph in section.paragraphs:
+        prefix_block_ids(paragraph, page_number)
+    for table in section.tables:
+        prefix_table_ids(table, page_number)
+    for child_section in section.child_sections:
+        prefix_section_ids(child_section, page_number)
+
+
+def prefix_requirement_source_ids(requirement: ExtractedRequirement, page_number: int) -> None:
+    prefix_source_reference_ids(requirement.source, page_number)
+
+
+def prefix_document_ids_for_split_page(
+    document: ParsedDocument,
+    page_number: int,
+) -> ParsedDocument:
+    prefixed_document = document.model_copy(deep=True)
+    for block in prefixed_document.blocks:
+        prefix_block_ids(block, page_number)
+    for paragraph in prefixed_document.paragraphs:
+        prefix_block_ids(paragraph, page_number)
+    for table in prefixed_document.tables:
+        prefix_table_ids(table, page_number)
+    for image in prefixed_document.images:
+        prefix_image_ids(image, page_number)
+    for section in prefixed_document.sections:
+        prefix_section_ids(section, page_number)
+    for page in prefixed_document.pages:
+        for block in page.blocks:
+            prefix_block_ids(block, page_number)
+        for table in page.tables:
+            prefix_table_ids(table, page_number)
+        for image in page.images:
+            prefix_image_ids(image, page_number)
+    return prefixed_document
 
 
 def merge_parsed_documents(documents: list[ParsedDocument]) -> ParsedDocument:
@@ -154,7 +253,8 @@ def process_split_pages(document_path: Path, page_range: tuple[int, int]) -> Par
     start_page, end_page = page_range
     for page_no in range(start_page, end_page + 1):
         print(f"Processing page {page_no}...")
-        parsed_pages.append(process_document(document_path, (page_no, page_no)))
+        page_document = process_document(document_path, (page_no, page_no))
+        parsed_pages.append(prefix_document_ids_for_split_page(page_document, page_no))
     return merge_parsed_documents(parsed_pages)
 
 
