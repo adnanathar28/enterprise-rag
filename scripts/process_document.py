@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
+from brd_knowledge.schemas.document import ParsedDocument, ParserMetadata
 
 SUPPORTED_SUFFIXES = {".pdf", ".docx"}
 
@@ -21,6 +22,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         metavar=("START", "END"),
         help="Optional inclusive 1-based page range to process.",
+    )
+    parser.add_argument(
+        "--split-pages",
+        action="store_true",
+        help="Process each page in --page-range separately and merge one ParsedDocument.",
     )
     return parser.parse_args()
 
@@ -51,10 +57,20 @@ def validate_page_range(page_range: list[int] | None) -> tuple[int, int] | None:
     return start, end
 
 
+def validate_split_pages(split_pages: bool, page_range: tuple[int, int] | None) -> None:
+    if split_pages and page_range is None:
+        raise ValueError("--split-pages requires --page-range START END.")
+
+
 def build_output_dir(document_path: Path, page_range: tuple[int, int] | None) -> Path:
     output_name = document_path.stem
     if page_range is not None:
         output_name = f"{output_name}_pages_{page_range[0]}_{page_range[1]}"
+    return Path("data/outputs") / output_name
+
+
+def build_split_output_dir(document_path: Path, page_range: tuple[int, int]) -> Path:
+    output_name = f"{document_path.stem}_pages_{page_range[0]}_{page_range[1]}_split"
     return Path("data/outputs") / output_name
 
 
@@ -69,17 +85,101 @@ def write_json(path: Path, value: Any) -> None:
     )
 
 
+def merge_parse_statuses(documents: list[ParsedDocument]) -> str:
+    statuses = [
+        page.parse_status
+        for document in documents
+        for page in document.pages
+        if page.parse_status not in {"not_started", "skipped"}
+    ]
+    if statuses and all(status == "success" for status in statuses):
+        return "success"
+    if statuses and all(status == "failed" for status in statuses):
+        return "failed"
+    return "partial_success"
+
+
+def merge_parsed_documents(documents: list[ParsedDocument]) -> ParsedDocument:
+    if not documents:
+        raise ValueError("Cannot merge an empty list of parsed documents.")
+
+    merged = documents[0].model_copy(deep=True)
+    merged.pages = []
+    merged.sections = []
+    merged.blocks = []
+    merged.paragraphs = []
+    merged.tables = []
+    merged.images = []
+    merged.diagnostics = []
+
+    for document in documents:
+        merged.pages.extend(document.pages)
+        merged.sections.extend(document.sections)
+        merged.blocks.extend(document.blocks)
+        merged.paragraphs.extend(document.paragraphs)
+        merged.tables.extend(document.tables)
+        merged.images.extend(document.images)
+        merged.diagnostics.extend(document.diagnostics)
+
+    merged.pages.sort(key=lambda page: page.page_number)
+    merged.blocks.sort(key=lambda block: (block.page_number, block.reading_order_index or 0))
+    merged.paragraphs.sort(key=lambda block: (block.page_number, block.reading_order_index or 0))
+    merged.tables.sort(key=lambda table: (table.page_number or 0, table.reading_order_index or 0))
+    merged.images.sort(key=lambda image: (image.page_number, image.reading_order_index or 0))
+    merged.sections.sort(key=lambda section: (section.page_start, section.section_id))
+    merged.metadata.page_count = len(merged.pages)
+
+    if merged.parser_metadata is not None:
+        first_metadata = documents[0].parser_metadata
+        last_metadata = documents[-1].parser_metadata
+        merged.parser_metadata = ParserMetadata(
+            parser_name=merged.parser_metadata.parser_name,
+            parser_version=merged.parser_metadata.parser_version,
+            parse_status=merge_parse_statuses(documents),
+            parse_strategy="split_pages",
+            started_at=first_metadata.started_at if first_metadata is not None else None,
+            completed_at=last_metadata.completed_at if last_metadata is not None else None,
+            diagnostics=merged.diagnostics,
+        )
+
+    return merged
+
+
+def process_document(document_path: Path, page_range: tuple[int, int] | None) -> ParsedDocument:
+    return DoclingDocumentParser(page_range=page_range).parse(document_path)
+
+
+def process_split_pages(document_path: Path, page_range: tuple[int, int]) -> ParsedDocument:
+    parsed_pages = []
+    start_page, end_page = page_range
+    for page_no in range(start_page, end_page + 1):
+        print(f"Processing page {page_no}...")
+        parsed_pages.append(process_document(document_path, (page_no, page_no)))
+    return merge_parsed_documents(parsed_pages)
+
+
 def main() -> None:
     args = parse_args()
     print("Validating document...")
     document_path = validate_document_path(args.document_path)
     page_range = validate_page_range(args.page_range)
+    validate_split_pages(args.split_pages, page_range)
 
-    output_dir = build_output_dir(document_path, page_range)
+    if args.split_pages:
+        if page_range is None:
+            raise ValueError("--split-pages requires --page-range START END.")
+        output_dir = build_split_output_dir(document_path, page_range)
+    else:
+        output_dir = build_output_dir(document_path, page_range)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("Parsing with Docling adapter...")
-    parsed_document = DoclingDocumentParser(page_range=page_range).parse(document_path)
+    if args.split_pages:
+        if page_range is None:
+            raise ValueError("--split-pages requires --page-range START END.")
+        parsed_document = process_split_pages(document_path, page_range)
+    else:
+        parsed_document = process_document(document_path, page_range)
 
     output_path = output_dir / "parsed_document.json"
     print("Writing normalized output...")
