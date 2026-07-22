@@ -99,6 +99,121 @@ def write_json(path: Path, value: Any) -> None:
     )
 
 
+def duplicate_values(values: list[str | None]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for value in values:
+        if value is None:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    return {value: count for value, count in sorted(counts.items()) if count > 1}
+
+
+def build_processing_summary(
+    parsed_document: ParsedDocument,
+    document_path: Path,
+    page_range: tuple[int, int] | None,
+    split_pages: bool,
+    output_path: Path,
+    summary_path: Path,
+) -> dict[str, Any]:
+    parse_status = (
+        parsed_document.parser_metadata.parse_status
+        if parsed_document.parser_metadata is not None
+        else None
+    )
+    failed_pages = [
+        {
+            "page_number": page.page_number,
+            "diagnostics": [diagnostic.model_dump(mode="json") for diagnostic in page.diagnostics],
+        }
+        for page in parsed_document.pages
+        if page.parse_status == "failed"
+    ]
+    diagnostics = [diagnostic.model_dump(mode="json") for diagnostic in parsed_document.diagnostics]
+
+    duplicate_ids = {
+        "blocks": duplicate_values([block.block_id for block in parsed_document.blocks]),
+        "tables": duplicate_values([table.table_id for table in parsed_document.tables]),
+        "images": duplicate_values([image.image_id for image in parsed_document.images]),
+        "sections": duplicate_values([section.section_id for section in parsed_document.sections]),
+        "cells": duplicate_values(
+            [cell.cell_id for table in parsed_document.tables for cell in table.cells]
+        ),
+    }
+    missing_provenance = {
+        "blocks": [
+            block.block_id
+            for block in parsed_document.blocks
+            if block.source is None or block.source.page_number is None
+        ],
+        "tables": [
+            table.table_id
+            for table in parsed_document.tables
+            if table.source is None or table.source.page_number is None
+        ],
+        "images": [
+            image.image_id
+            for image in parsed_document.images
+            if image.source is None or image.source.page_number is None
+        ],
+        "cells": [
+            cell.cell_id
+            for table in parsed_document.tables
+            for cell in table.cells
+            if cell.source is None or cell.source.page_number is None
+        ],
+    }
+    empty_pages = [
+        page.page_number
+        for page in parsed_document.pages
+        if not page.blocks and not page.tables and not page.images
+    ]
+
+    return {
+        "source": {
+            "path": str(document_path),
+            "filename": document_path.name,
+            "suffix": document_path.suffix.lower(),
+            "size_bytes": document_path.stat().st_size,
+            "page_range": page_range,
+        },
+        "processing": {
+            "split_pages": split_pages,
+            "parse_status": parse_status,
+            "parser_name": parsed_document.metadata.parser_name,
+            "parser_version": parsed_document.metadata.parser_version,
+        },
+        "counts": {
+            "pages": len(parsed_document.pages),
+            "blocks": len(parsed_document.blocks),
+            "tables": len(parsed_document.tables),
+            "table_cells": sum(len(table.cells) for table in parsed_document.tables),
+            "images": len(parsed_document.images),
+            "sections": len(parsed_document.sections),
+            "diagnostics": len(parsed_document.diagnostics),
+            "failed_pages": len(failed_pages),
+            "empty_pages": len(empty_pages),
+        },
+        "failed_pages": failed_pages,
+        "empty_pages": empty_pages,
+        "diagnostics": diagnostics,
+        "checks": {
+            "duplicate_ids": duplicate_ids,
+            "missing_provenance": missing_provenance,
+            "has_duplicate_ids": any(
+                duplicate_ids_for_type for duplicate_ids_for_type in duplicate_ids.values()
+            ),
+            "has_missing_provenance": any(
+                missing_ids for missing_ids in missing_provenance.values()
+            ),
+        },
+        "outputs": {
+            "parsed_document": str(output_path),
+            "processing_summary": str(summary_path),
+        },
+    }
+
+
 def merge_parse_statuses(documents: list[ParsedDocument]) -> ParseStatus:
     statuses = [
         page.parse_status
@@ -332,8 +447,20 @@ def main() -> None:
         parsed_document = process_document(document_path, page_range)
 
     output_path = output_dir / "parsed_document.json"
+    summary_path = output_dir / "processing_summary.json"
     print("Writing normalized output...")
     write_json(output_path, parsed_document.model_dump(mode="json"))
+    write_json(
+        summary_path,
+        build_processing_summary(
+            parsed_document=parsed_document,
+            document_path=document_path,
+            page_range=page_range,
+            split_pages=args.split_pages,
+            output_path=output_path,
+            summary_path=summary_path,
+        ),
+    )
 
     parse_status = (
         parsed_document.parser_metadata.parse_status
@@ -342,6 +469,7 @@ def main() -> None:
     )
     print(f"Processed: {document_path}")
     print(f"Output file: {output_path}")
+    print(f"Summary file: {summary_path}")
     print(f"Parse status: {parse_status}")
     print(
         "Counts: "
