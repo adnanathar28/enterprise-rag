@@ -1,16 +1,6 @@
 from pydantic import BaseModel, Field
 
-from brd_knowledge.schemas.table import BoundingBox
-
-
-class SourceReference(BaseModel):
-    document_id: str
-    page_number: int = Field(ge=1)
-    section_id: str | None = None
-    table_id: str | None = None
-    block_id: str | None = None
-    text_excerpt: str | None = None
-    bounding_box: BoundingBox | None = None
+from brd_knowledge.schemas.source import SourceReference
 
 
 class ExtractedRequirement(BaseModel):
