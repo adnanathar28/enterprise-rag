@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
 from brd_knowledge.schemas.document import (
     DocumentBlock,
+    DocumentMetadata,
+    Page,
     ParsedDocument,
     ParsedImage,
+    ParserDiagnostic,
     ParserMetadata,
     ParseStatus,
 )
@@ -248,13 +252,59 @@ def process_document(document_path: Path, page_range: tuple[int, int] | None) ->
     return DoclingDocumentParser(page_range=page_range).parse(document_path)
 
 
+def build_failed_page_document(
+    document_path: Path,
+    page_number: int,
+    exc: Exception,
+) -> ParsedDocument:
+    now = datetime.now(UTC)
+    diagnostic = ParserDiagnostic(
+        severity="error",
+        parser_name="docling",
+        page_number=page_number,
+        error_type=type(exc).__name__,
+        message=str(exc),
+    )
+    return ParsedDocument(
+        metadata=DocumentMetadata(
+            document_id=document_path.stem,
+            filename=document_path.name,
+            source_path=document_path,
+            file_type=document_path.suffix.lower().lstrip("."),
+            page_count=1,
+            parser_name="docling",
+        ),
+        parser_metadata=ParserMetadata(
+            parser_name="docling",
+            parse_status="failed",
+            parse_strategy="split_pages",
+            started_at=now,
+            completed_at=now,
+            diagnostics=[diagnostic],
+        ),
+        pages=[
+            Page(
+                page_number=page_number,
+                parse_status="failed",
+                parser_name="docling",
+                diagnostics=[diagnostic],
+            )
+        ],
+        diagnostics=[diagnostic],
+    )
+
+
 def process_split_pages(document_path: Path, page_range: tuple[int, int]) -> ParsedDocument:
     parsed_pages = []
     start_page, end_page = page_range
     for page_no in range(start_page, end_page + 1):
         print(f"Processing page {page_no}...")
-        page_document = process_document(document_path, (page_no, page_no))
-        parsed_pages.append(prefix_document_ids_for_split_page(page_document, page_no))
+        try:
+            page_document = process_document(document_path, (page_no, page_no))
+            parsed_pages.append(prefix_document_ids_for_split_page(page_document, page_no))
+        except Exception as exc:
+            print(f"Page {page_no} failed: {type(exc).__name__}: {exc}")
+            parsed_pages.append(build_failed_page_document(document_path, page_no, exc))
     return merge_parsed_documents(parsed_pages)
 
 
