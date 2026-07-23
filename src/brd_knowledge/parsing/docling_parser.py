@@ -221,6 +221,34 @@ class DoclingDocumentParser(DocumentParser):
         rows: list[TableRow] = []
         cells: list[TableCell] = []
 
+        if raw_cells:
+            seen_cell_ids = set()
+            for raw_cell in raw_cells:
+                cell = self._build_table_cell(
+                    raw_cell=raw_cell,
+                    document_id=document_id,
+                    table_id=table_id,
+                    page_number=page_number,
+                    fallback_row_index=0,
+                    fallback_column_index=len(cells),
+                )
+                if cell.cell_id in seen_cell_ids:
+                    continue
+                cells.append(cell)
+                seen_cell_ids.add(cell.cell_id)
+
+            grouped_rows: dict[int, list[TableCell]] = defaultdict(list)
+            for cell in cells:
+                grouped_rows[cell.row_index].append(cell)
+            rows = [
+                TableRow(
+                    row_index=row_index,
+                    cells=sorted(row_cells, key=lambda cell: cell.column_index),
+                )
+                for row_index, row_cells in sorted(grouped_rows.items())
+            ]
+            return rows, cells
+
         if grid:
             seen_cell_ids = set()
             for row_index, row_cells in enumerate(grid):
@@ -240,28 +268,6 @@ class DoclingDocumentParser(DocumentParser):
                         seen_cell_ids.add(cell.cell_id)
                 rows.append(row)
             return rows, cells
-
-        for raw_cell in raw_cells:
-            cell = self._build_table_cell(
-                raw_cell=raw_cell,
-                document_id=document_id,
-                table_id=table_id,
-                page_number=page_number,
-                fallback_row_index=0,
-                fallback_column_index=len(cells),
-            )
-            cells.append(cell)
-
-        grouped_rows: dict[int, list[TableCell]] = defaultdict(list)
-        for cell in cells:
-            grouped_rows[cell.row_index].append(cell)
-        rows = [
-            TableRow(
-                row_index=row_index,
-                cells=sorted(row_cells, key=lambda cell: cell.column_index),
-            )
-            for row_index, row_cells in sorted(grouped_rows.items())
-        ]
         return rows, cells
 
     def _build_table_cell(

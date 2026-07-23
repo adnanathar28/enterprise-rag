@@ -7,7 +7,7 @@ import time
 from collections import Counter
 from importlib import metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 SUPPORTED_SUFFIXES = {".pdf", ".docx"}
 REQUIREMENT_ID_PATTERN = re.compile(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+){2,}\b")
@@ -123,7 +123,7 @@ def extract_bbox(prov_item: Any) -> dict[str, Any] | None:
     bbox = getattr(prov_item, "bbox", None)
     if bbox is None:
         return None
-    return safe_model_dump(bbox)
+    return cast(dict[str, Any], safe_model_dump(bbox))
 
 
 def extract_provenance(item: Any) -> list[dict[str, Any]]:
@@ -210,8 +210,8 @@ def inspect_iterated_items(
     docling_document: Any,
 ) -> tuple[Counter[str], list[dict[str, Any]], list[dict[str, Any]]]:
     labels: Counter[str] = Counter()
-    samples = []
-    gaps = []
+    samples: list[dict[str, Any]] = []
+    gaps: list[dict[str, Any]] = []
 
     for index, (item, level) in enumerate(docling_document.iterate_items(with_groups=True)):
         label = get_label_name(item)
@@ -314,7 +314,7 @@ def inspect_with_docling(
     labels, item_samples, gaps = inspect_iterated_items(docling_document)
     requirement_id_counts = Counter(REQUIREMENT_ID_PATTERN.findall(markdown))
 
-    summary = {
+    summary: dict[str, Any] = {
         "source": {
             "path": str(document_path),
             "filename": document_path.name,

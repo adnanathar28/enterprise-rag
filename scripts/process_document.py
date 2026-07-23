@@ -247,14 +247,28 @@ def table_to_markdown(table: ParsedTable) -> list[str]:
         return []
 
     max_columns = 0
-    rendered_rows = []
+    rendered_rows: list[dict[int, TableCell]] = []
     for row in table.rows:
-        cells_by_column = {cell.column_index: cell for cell in row.cells}
-        max_columns = max(max_columns, max(cells_by_column.keys(), default=-1) + 1)
+        cells_by_column: dict[int, TableCell] = {}
+        for cell in row.cells:
+            for offset in range(cell.column_span):
+                cells_by_column[cell.column_index + offset] = cell
+            max_columns = max(max_columns, cell.column_index + cell.column_span)
         rendered_rows.append(cells_by_column)
 
     if max_columns == 0:
         return []
+
+    row_indexes = {row.row_index for row in table.rows}
+    for cell in table.cells:
+        for row_offset in range(1, cell.row_span):
+            target_row_index = cell.row_index + row_offset
+            if target_row_index not in row_indexes:
+                continue
+            target_row = next(row for row in table.rows if row.row_index == target_row_index)
+            rendered_row = rendered_rows[table.rows.index(target_row)]
+            for column_offset in range(cell.column_span):
+                rendered_row.setdefault(cell.column_index + column_offset, cell)
 
     lines = []
     for row_index, cells_by_column in enumerate(rendered_rows):

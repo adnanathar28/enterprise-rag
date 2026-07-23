@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
-from brd_knowledge.schemas.document import ParserDiagnostic
+from brd_knowledge.schemas.document import DocumentBlock, ParserDiagnostic
 
 
 def bbox() -> SimpleNamespace:
@@ -31,15 +31,17 @@ def table_cell(
     row: int,
     column: int,
     column_header: bool = False,
+    row_span: int = 1,
+    column_span: int = 1,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         text=text,
         start_row_offset_idx=row,
-        end_row_offset_idx=row + 1,
+        end_row_offset_idx=row + row_span,
         start_col_offset_idx=column,
-        end_col_offset_idx=column + 1,
-        row_span=1,
-        col_span=1,
+        end_col_offset_idx=column + column_span,
+        row_span=row_span,
+        col_span=column_span,
         column_header=column_header,
         row_header=False,
         bbox=bbox(),
@@ -82,7 +84,15 @@ def test_docling_adapter_normalizes_blocks_tables_images_and_pages() -> None:
     tables = parser._build_tables(docling_document, "doc-001", reading_order)
     images = parser._build_images(docling_document, "doc-001", reading_order)
     diagnostics: list[ParserDiagnostic] = []
-    pages = parser._build_pages(docling_document, "success", diagnostics, blocks, tables, images)
+    document_blocks: list[DocumentBlock] = list(blocks)
+    pages = parser._build_pages(
+        docling_document,
+        "success",
+        diagnostics,
+        document_blocks,
+        tables,
+        images,
+    )
     sections = parser._build_sections("doc-001", blocks)
 
     assert blocks[0].block_type == "section_header"
@@ -122,3 +132,50 @@ def test_docling_adapter_marks_pages_with_diagnostics_as_failed() -> None:
     assert pages[0].page_number == 42
     assert pages[0].parse_status == "failed"
     assert pages[0].diagnostics == [diagnostic]
+
+
+def test_docling_adapter_uses_unique_logical_table_cells_for_rows() -> None:
+    parser = DoclingDocumentParser(page_range=(1, 1))
+    spanned_header = table_cell(
+        "Length Width Height",
+        0,
+        2,
+        column_header=True,
+        column_span=3,
+    )
+    raw_cells = [
+        table_cell("Description", 0, 0, column_header=True),
+        spanned_header,
+        table_cell("Small", 1, 0),
+        table_cell("20", 1, 2),
+        table_cell("15", 1, 3),
+        table_cell("12", 1, 4),
+    ]
+    table = SimpleNamespace(
+        self_ref="#/tables/0",
+        label="table",
+        prov=[prov(1)],
+        captions=[],
+        data=SimpleNamespace(
+            grid=[
+                [raw_cells[0], spanned_header, spanned_header, spanned_header],
+                raw_cells[2:],
+            ],
+            table_cells=raw_cells,
+        ),
+    )
+    docling_document = SimpleNamespace(
+        tables=[table],
+        iterate_items=lambda with_groups: [(table, 1)],
+    )
+
+    tables = parser._build_tables(
+        docling_document,
+        document_id="doc-001",
+        reading_order=parser._build_reading_order(docling_document),
+    )
+
+    assert len(tables[0].rows[0].cells) == 2
+    assert tables[0].rows[0].cells[1].text == "Length Width Height"
+    assert tables[0].rows[0].cells[1].column_span == 3
+    assert len(tables[0].cells) == 6

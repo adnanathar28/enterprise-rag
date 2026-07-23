@@ -2,12 +2,15 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+from pytest import MonkeyPatch
+
 from brd_knowledge.schemas.document import (
     DocumentMetadata,
     Page,
     ParsedDocument,
     ParserMetadata,
 )
+from brd_knowledge.schemas.table import ParsedTable, TableCell, TableRow
 
 
 def load_process_document_script() -> ModuleType:
@@ -44,7 +47,7 @@ def parsed_page(page_number: int) -> ParsedDocument:
     )
 
 
-def test_split_processing_keeps_failed_pages_non_fatal(monkeypatch) -> None:
+def test_split_processing_keeps_failed_pages_non_fatal(monkeypatch: MonkeyPatch) -> None:
     process_document_script = load_process_document_script()
 
     def fake_process_document(
@@ -69,7 +72,7 @@ def test_split_processing_keeps_failed_pages_non_fatal(monkeypatch) -> None:
     assert result.diagnostics[0].message == "synthetic page failure"
 
 
-def test_split_processing_records_page_timeout(monkeypatch) -> None:
+def test_split_processing_records_page_timeout(monkeypatch: MonkeyPatch) -> None:
     process_document_script = load_process_document_script()
 
     def fake_process_document_with_timeout(
@@ -98,3 +101,52 @@ def test_split_processing_records_page_timeout(monkeypatch) -> None:
     assert [page.parse_status for page in result.pages] == ["success", "failed"]
     assert result.diagnostics[0].error_type == "TimeoutError"
     assert result.diagnostics[0].message == "Page 2 exceeded timeout of 1.0 seconds."
+
+
+def test_table_markdown_expands_spanned_cells_for_readability() -> None:
+    process_document_script = load_process_document_script()
+    table = ParsedTable(
+        table_id="table-1",
+        rows=[
+            TableRow(
+                row_index=0,
+                cells=[
+                    TableCell(row_index=0, column_index=0, text="Description"),
+                    TableCell(
+                        row_index=0,
+                        column_index=1,
+                        text="Length Width Height",
+                        column_span=3,
+                    ),
+                ],
+            ),
+            TableRow(
+                row_index=1,
+                cells=[
+                    TableCell(row_index=1, column_index=0, text="Small"),
+                    TableCell(row_index=1, column_index=1, text="20"),
+                    TableCell(row_index=1, column_index=2, text="15"),
+                    TableCell(row_index=1, column_index=3, text="12"),
+                ],
+            ),
+        ],
+        cells=[
+            TableCell(row_index=0, column_index=0, text="Description"),
+            TableCell(
+                row_index=0,
+                column_index=1,
+                text="Length Width Height",
+                column_span=3,
+            ),
+            TableCell(row_index=1, column_index=0, text="Small"),
+            TableCell(row_index=1, column_index=1, text="20"),
+            TableCell(row_index=1, column_index=2, text="15"),
+            TableCell(row_index=1, column_index=3, text="12"),
+        ],
+    )
+
+    assert process_document_script.table_to_markdown(table) == [
+        "| Description | Length Width Height | Length Width Height | Length Width Height |",
+        "| --- | --- | --- | --- |",
+        "| Small | 20 | 15 | 12 |",
+    ]
