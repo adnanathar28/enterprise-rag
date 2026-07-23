@@ -242,6 +242,10 @@ def markdown_escape_cell(value: str) -> str:
     return " ".join(value.replace("|", "\\|").split())
 
 
+def pad_markdown_cell(value: str, width: int) -> str:
+    return value.ljust(width)
+
+
 def table_to_markdown(table: ParsedTable) -> list[str]:
     if not table.rows:
         return []
@@ -259,28 +263,42 @@ def table_to_markdown(table: ParsedTable) -> list[str]:
     if max_columns == 0:
         return []
 
+    table_rows = {row.row_index: row for row in table.rows}
+    row_positions = {row.row_index: index for index, row in enumerate(table.rows)}
     row_indexes = {row.row_index for row in table.rows}
     for cell in table.cells:
         for row_offset in range(1, cell.row_span):
             target_row_index = cell.row_index + row_offset
             if target_row_index not in row_indexes:
                 continue
-            target_row = next(row for row in table.rows if row.row_index == target_row_index)
-            rendered_row = rendered_rows[table.rows.index(target_row)]
+            target_row = table_rows[target_row_index]
+            rendered_row = rendered_rows[row_positions[target_row.row_index]]
             for column_offset in range(cell.column_span):
                 rendered_row.setdefault(cell.column_index + column_offset, cell)
 
-    lines = []
-    for row_index, cells_by_column in enumerate(rendered_rows):
+    rendered_values = []
+    column_widths = [3] * max_columns
+    for cells_by_column in rendered_rows:
         values = [
             markdown_escape_cell(cells_by_column[column_index].text)
             if column_index in cells_by_column
             else ""
             for column_index in range(max_columns)
         ]
-        lines.append(f"| {' | '.join(values)} |")
+        rendered_values.append(values)
+        for column_index, value in enumerate(values):
+            column_widths[column_index] = max(column_widths[column_index], len(value))
+
+    lines = []
+    for row_index, values in enumerate(rendered_values):
+        padded_values = [
+            pad_markdown_cell(value, column_widths[column_index])
+            for column_index, value in enumerate(values)
+        ]
+        lines.append(f"| {' | '.join(padded_values)} |")
         if row_index == 0:
-            lines.append(f"| {' | '.join(['---'] * max_columns)} |")
+            separators = ["-" * width for width in column_widths]
+            lines.append(f"| {' | '.join(separators)} |")
     return lines
 
 

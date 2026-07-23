@@ -147,6 +147,6 @@ def test_table_markdown_expands_spanned_cells_for_readability() -> None:
 
     assert process_document_script.table_to_markdown(table) == [
         "| Description | Length Width Height | Length Width Height | Length Width Height |",
-        "| --- | --- | --- | --- |",
-        "| Small | 20 | 15 | 12 |",
+        "| ----------- | ------------------- | ------------------- | ------------------- |",
+        "| Small       | 20                  | 15                  | 12                  |",
     ]
