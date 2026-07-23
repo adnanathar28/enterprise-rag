@@ -555,17 +555,20 @@ def process_document_with_timeout(
         args=(str(document_path), page_number, result_queue),
     )
     process.start()
-    process.join(timeout_seconds)
 
+    try:
+        result = result_queue.get(timeout=timeout_seconds)
+    except Empty as exc:
+        process.terminate()
+        process.join()
+        raise TimeoutError(
+            f"Page {page_number} exceeded timeout of {timeout_seconds} seconds."
+        ) from exc
+
+    process.join(timeout=5)
     if process.is_alive():
         process.terminate()
         process.join()
-        raise TimeoutError(f"Page {page_number} exceeded timeout of {timeout_seconds} seconds.")
-
-    try:
-        result = result_queue.get_nowait()
-    except Empty as exc:
-        raise RuntimeError(f"Page {page_number} process exited without a result.") from exc
 
     status = result[0]
     if status == "success":
