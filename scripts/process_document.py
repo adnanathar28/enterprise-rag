@@ -184,7 +184,10 @@ def build_processing_summary(
     empty_pages = [
         page.page_number
         for page in parsed_document.pages
-        if not page.blocks and not page.tables and not page.images
+        if page.parse_status != "failed"
+        and not page.blocks
+        and not page.tables
+        and not page.images
     ]
 
     return {
@@ -274,9 +277,13 @@ def build_normalized_output_markdown(parsed_document: ParsedDocument) -> str:
     ]
 
     for page in parsed_document.pages:
-        lines.extend([f"<!-- Page {page.page_number} -->", ""])
+        lines.extend([f"<!-- Page {page.page_number} -->", "", f"# Page {page.page_number}", ""])
         if page.parse_status != "success":
-            lines.extend([f"> Page parse status: {page.parse_status}", ""])
+            lines.append(f"> **Page parse status:** {page.parse_status}")
+            for diagnostic in page.diagnostics:
+                diagnostic_type = diagnostic.error_type or "Diagnostic"
+                lines.append(f"> **{diagnostic_type}:** {diagnostic.message}")
+            lines.append("")
 
         page_items: list[tuple[int, str, Any]] = []
         for block in page.blocks:
@@ -352,6 +359,9 @@ def build_normalized_report(summary: dict[str, Any], parsed_document: ParsedDocu
             f"blocks={len(page.blocks)}, tables={len(page.tables)}, images={len(page.images)}, "
             f"diagnostics={len(page.diagnostics)}"
         )
+        for diagnostic in page.diagnostics:
+            diagnostic_type = diagnostic.error_type or "Diagnostic"
+            lines.append(f"  - {diagnostic_type}: {diagnostic.message}")
 
     if parsed_document.tables:
         lines.extend(["", "Tables"])
