@@ -131,6 +131,8 @@ def build_processing_summary(
     page_timeout_seconds: float | None,
     output_path: Path,
     summary_path: Path,
+    report_path: Path | None = None,
+    markdown_path: Path | None = None,
 ) -> dict[str, Any]:
     parse_status = (
         parsed_document.parser_metadata.parse_status
@@ -227,8 +229,140 @@ def build_processing_summary(
         "outputs": {
             "parsed_document": str(output_path),
             "processing_summary": str(summary_path),
+            "normalized_report": str(report_path) if report_path is not None else None,
+            "normalized_output_markdown": str(markdown_path) if markdown_path is not None else None,
         },
     }
+
+
+def markdown_escape_cell(value: str) -> str:
+    return " ".join(value.replace("|", "\\|").split())
+
+
+def table_to_markdown(table: ParsedTable) -> list[str]:
+    if not table.rows:
+        return []
+
+    max_columns = 0
+    rendered_rows = []
+    for row in table.rows:
+        cells_by_column = {cell.column_index: cell for cell in row.cells}
+        max_columns = max(max_columns, max(cells_by_column.keys(), default=-1) + 1)
+        rendered_rows.append(cells_by_column)
+
+    if max_columns == 0:
+        return []
+
+    lines = []
+    for row_index, cells_by_column in enumerate(rendered_rows):
+        values = [
+            markdown_escape_cell(cells_by_column[column_index].text)
+            if column_index in cells_by_column
+            else ""
+            for column_index in range(max_columns)
+        ]
+        lines.append(f"| {' | '.join(values)} |")
+        if row_index == 0:
+            lines.append(f"| {' | '.join(['---'] * max_columns)} |")
+    return lines
+
+
+def build_normalized_output_markdown(parsed_document: ParsedDocument) -> str:
+    lines = [
+        f"# {parsed_document.metadata.filename}",
+        "",
+    ]
+
+    for page in parsed_document.pages:
+        lines.extend([f"<!-- Page {page.page_number} -->", ""])
+        if page.parse_status != "success":
+            lines.extend([f"> Page parse status: {page.parse_status}", ""])
+
+        page_items: list[tuple[int, str, Any]] = []
+        for block in page.blocks:
+            page_items.append((block.reading_order_index or 0, "block", block))
+        for table in page.tables:
+            page_items.append((table.reading_order_index or 0, "table", table))
+        for image in page.images:
+            page_items.append((image.reading_order_index or 0, "image", image))
+
+        for _, item_type, item in sorted(page_items, key=lambda entry: entry[0]):
+            if item_type == "block":
+                if item.block_type == "section_header":
+                    lines.extend([f"## {item.text}", ""])
+                elif item.block_type == "list_item":
+                    lines.extend([f"- {item.text}", ""])
+                else:
+                    lines.extend([item.text, ""])
+            elif item_type == "table":
+                table_lines = table_to_markdown(item)
+                if table_lines:
+                    lines.extend(table_lines)
+                    lines.append("")
+            elif item_type == "image":
+                lines.extend(["<!-- image -->", ""])
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def build_normalized_report(summary: dict[str, Any], parsed_document: ParsedDocument) -> str:
+    checks = summary["checks"]
+    counts = summary["counts"]
+    processing = summary["processing"]
+    lines = [
+        "Normalized Processing Report",
+        "",
+        f"Source: {summary['source']['path']}",
+        f"Page range: {summary['source']['page_range']}",
+        f"Split pages: {processing['split_pages']}",
+        f"Page timeout seconds: {processing['page_timeout_seconds']}",
+        f"Parse status: {processing['parse_status']}",
+        "",
+        "Counts",
+        f"- Pages: {counts['pages']}",
+        f"- Blocks: {counts['blocks']}",
+        f"- Tables: {counts['tables']}",
+        f"- Table cells: {counts['table_cells']}",
+        f"- Images: {counts['images']}",
+        f"- Sections: {counts['sections']}",
+        f"- Diagnostics: {counts['diagnostics']}",
+        f"- Failed pages: {counts['failed_pages']}",
+        f"- Empty pages: {counts['empty_pages']}",
+        "",
+        "Checks",
+        f"- Duplicate IDs: {checks['has_duplicate_ids']}",
+        f"- Missing provenance: {checks['has_missing_provenance']}",
+    ]
+
+    if summary["failed_pages"]:
+        lines.extend(["", "Failed Pages"])
+        for failed_page in summary["failed_pages"]:
+            diagnostics = failed_page["diagnostics"]
+            messages = "; ".join(diagnostic["message"] for diagnostic in diagnostics)
+            lines.append(f"- Page {failed_page['page_number']}: {messages}")
+
+    if summary["empty_pages"]:
+        lines.extend(["", "Empty Pages"])
+        lines.append("- " + ", ".join(str(page_number) for page_number in summary["empty_pages"]))
+
+    lines.extend(["", "Per-Page Summary"])
+    for page in parsed_document.pages:
+        lines.append(
+            f"- Page {page.page_number}: {page.parse_status}, "
+            f"blocks={len(page.blocks)}, tables={len(page.tables)}, images={len(page.images)}, "
+            f"diagnostics={len(page.diagnostics)}"
+        )
+
+    if parsed_document.tables:
+        lines.extend(["", "Tables"])
+        for table in parsed_document.tables:
+            lines.append(
+                f"- {table.table_id}: page={table.page_number}, "
+                f"rows={len(table.rows)}, cells={len(table.cells)}, "
+                f"quality_notes={len(table.quality_notes)}"
+            )
+
+    return "\n".join(lines) + "\n"
 
 
 def merge_parse_statuses(documents: list[ParsedDocument]) -> ParseStatus:
@@ -521,20 +655,24 @@ def main() -> None:
 
     output_path = output_dir / "parsed_document.json"
     summary_path = output_dir / "processing_summary.json"
+    report_path = output_dir / "normalized_report.txt"
+    markdown_path = output_dir / "normalized_output.md"
     print("Writing normalized output...")
     write_json(output_path, parsed_document.model_dump(mode="json"))
-    write_json(
-        summary_path,
-        build_processing_summary(
-            parsed_document=parsed_document,
-            document_path=document_path,
-            page_range=page_range,
-            split_pages=args.split_pages,
-            page_timeout_seconds=page_timeout_seconds,
-            output_path=output_path,
-            summary_path=summary_path,
-        ),
+    summary = build_processing_summary(
+        parsed_document=parsed_document,
+        document_path=document_path,
+        page_range=page_range,
+        split_pages=args.split_pages,
+        page_timeout_seconds=page_timeout_seconds,
+        output_path=output_path,
+        summary_path=summary_path,
+        report_path=report_path,
+        markdown_path=markdown_path,
     )
+    write_json(summary_path, summary)
+    report_path.write_text(build_normalized_report(summary, parsed_document), encoding="utf-8")
+    markdown_path.write_text(build_normalized_output_markdown(parsed_document), encoding="utf-8")
 
     parse_status = (
         parsed_document.parser_metadata.parse_status
@@ -544,6 +682,8 @@ def main() -> None:
     print(f"Processed: {document_path}")
     print(f"Output file: {output_path}")
     print(f"Summary file: {summary_path}")
+    print(f"Report file: {report_path}")
+    print(f"Markdown file: {markdown_path}")
     print(f"Parse status: {parse_status}")
     print(
         "Counts: "
