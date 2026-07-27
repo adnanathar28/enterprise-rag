@@ -9,6 +9,10 @@ from brd_knowledge.schemas.document import (
     TextBlock,
 )
 from brd_knowledge.schemas.ingestion import IngestionResult, IngestionSummary
+from brd_knowledge.schemas.persisted_document import (
+    PersistedDocumentSummary,
+    PersistedParsedDocument,
+)
 from brd_knowledge.schemas.requirement import ExtractedRequirement
 from brd_knowledge.schemas.section import DocumentSection
 from brd_knowledge.schemas.source import BoundingBox, SourceReference
@@ -29,6 +33,8 @@ __all__ = [
     "ParsedTable",
     "ParserDiagnostic",
     "ParserMetadata",
+    "PersistedDocumentSummary",
+    "PersistedParsedDocument",
     "SourceReference",
     "StoredSourceFile",
     "TableCell",

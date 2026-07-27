@@ -11,6 +11,10 @@ from brd_knowledge.api.dependencies import (
 )
 from brd_knowledge.parsing.options import ParseOptions
 from brd_knowledge.schemas.ingestion import IngestionSummary
+from brd_knowledge.schemas.persisted_document import (
+    PersistedDocumentSummary,
+    PersistedParsedDocument,
+)
 from brd_knowledge.services.document_persistence_service import DocumentPersistenceService
 from brd_knowledge.services.file_intake_service import FileIntakeService
 from brd_knowledge.services.ingestion_service import IngestionService
@@ -19,9 +23,45 @@ router = APIRouter()
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
-@router.get("/")
-def list_documents() -> list[dict[str, str]]:
-    return []
+@router.get("/", response_model=list[PersistedDocumentSummary])
+def list_documents(
+    document_persistence_service: Annotated[
+        DocumentPersistenceService,
+        Depends(document_persistence_service_dependency),
+    ],
+) -> list[PersistedDocumentSummary]:
+    return [
+        PersistedDocumentSummary.from_model(document)
+        for document in document_persistence_service.list_documents()
+    ]
+
+
+@router.get("/{document_id}", response_model=PersistedDocumentSummary)
+def get_document(
+    document_id: str,
+    document_persistence_service: Annotated[
+        DocumentPersistenceService,
+        Depends(document_persistence_service_dependency),
+    ],
+) -> PersistedDocumentSummary:
+    document = document_persistence_service.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
+    return PersistedDocumentSummary.from_model(document)
+
+
+@router.get("/{document_id}/parsed", response_model=PersistedParsedDocument)
+def get_parsed_document(
+    document_id: str,
+    document_persistence_service: Annotated[
+        DocumentPersistenceService,
+        Depends(document_persistence_service_dependency),
+    ],
+) -> PersistedParsedDocument:
+    parsed_document = document_persistence_service.get_parsed_document_json(document_id)
+    if parsed_document is None:
+        raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
+    return PersistedParsedDocument(document_id=document_id, parsed_document=parsed_document)
 
 
 @router.post("/ingest", response_model=IngestionSummary)

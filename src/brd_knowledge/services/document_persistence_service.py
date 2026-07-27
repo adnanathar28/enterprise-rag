@@ -42,9 +42,15 @@ class DocumentPersistenceService:
         return document
 
     def get_parsed_document_json(self, document_id: str) -> dict[str, Any] | None:
-        document = (
-            self._session.query(Document).filter(Document.document_id == document_id).one_or_none()
-        )
+        document = self.get_document(document_id)
         if document is None:
             return None
         return document.parsed_document_json
+
+    def get_document(self, document_id: str) -> Document | None:
+        return (
+            self._session.query(Document).filter(Document.document_id == document_id).one_or_none()
+        )
+
+    def list_documents(self) -> list[Document]:
+        return self._session.query(Document).order_by(Document.created_at.desc()).all()

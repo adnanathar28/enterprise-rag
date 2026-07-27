@@ -1,5 +1,7 @@
 from pathlib import Path
 from shutil import copy2
+from types import SimpleNamespace
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -70,6 +72,32 @@ class FakeIngestionService:
 class FakeDocumentPersistenceService:
     def __init__(self) -> None:
         self.calls: list[tuple[StoredSourceFile, IngestionResult]] = []
+        self.documents = [
+            SimpleNamespace(
+                document_id="doc-001",
+                filename="sample.pdf",
+                original_filename="sample.pdf",
+                stored_filename="stored.pdf",
+                file_type="pdf",
+                size_bytes=123,
+                page_count=2,
+                parse_status="success",
+                parser_name="fake",
+                parser_version="1.0",
+                created_at="2026-07-27T00:00:00",
+            )
+        ]
+        self.parsed_documents = {
+            "doc-001": {
+                "metadata": {
+                    "document_id": "doc-001",
+                    "filename": "stored.pdf",
+                    "file_type": "pdf",
+                    "page_count": 2,
+                },
+                "pages": [{"page_number": 1}, {"page_number": 2}],
+            }
+        }
 
     def save_ingestion_result(
         self,
@@ -77,6 +105,18 @@ class FakeDocumentPersistenceService:
         ingestion_result: IngestionResult,
     ) -> None:
         self.calls.append((stored_file, ingestion_result))
+
+    def list_documents(self) -> list[SimpleNamespace]:
+        return self.documents
+
+    def get_document(self, document_id: str) -> SimpleNamespace | None:
+        return next(
+            (document for document in self.documents if document.document_id == document_id),
+            None,
+        )
+
+    def get_parsed_document_json(self, document_id: str) -> dict[str, Any] | None:
+        return self.parsed_documents.get(document_id)
 
 
 def test_ingest_document_upload_returns_summary(tmp_path: Path) -> None:
@@ -196,3 +236,63 @@ def test_ingest_document_returns_intake_validation_errors(tmp_path: Path) -> Non
     assert "Unsupported file extension" in response.json()["detail"]
     assert ingestion_service.calls == []
     assert persistence_service.calls == []
+
+
+def test_list_documents_returns_persisted_summaries() -> None:
+    persistence_service = FakeDocumentPersistenceService()
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+
+    try:
+        client = TestClient(app)
+        response = client.get("/documents/")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()[0]["document_id"] == "doc-001"
+    assert response.json()[0]["filename"] == "sample.pdf"
+    assert response.json()[0]["parse_status"] == "success"
+
+
+def test_get_document_returns_persisted_summary() -> None:
+    persistence_service = FakeDocumentPersistenceService()
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+
+    try:
+        client = TestClient(app)
+        response = client.get("/documents/doc-001")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["document_id"] == "doc-001"
+    assert response.json()["stored_filename"] == "stored.pdf"
+
+
+def test_get_document_returns_404_for_missing_document() -> None:
+    persistence_service = FakeDocumentPersistenceService()
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+
+    try:
+        client = TestClient(app)
+        response = client.get("/documents/missing")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Document not found: missing"
+
+
+def test_get_parsed_document_returns_stored_json() -> None:
+    persistence_service = FakeDocumentPersistenceService()
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+
+    try:
+        client = TestClient(app)
+        response = client.get("/documents/doc-001/parsed")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["document_id"] == "doc-001"
+    assert response.json()["parsed_document"]["metadata"]["document_id"] == "doc-001"
