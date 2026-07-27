@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Empty
 from typing import Any
 
+from brd_knowledge.parsing import split_pages
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
 from brd_knowledge.schemas.document import (
     DocumentBlock,
@@ -694,7 +695,11 @@ def main() -> None:
     if args.split_pages:
         if page_range is None:
             raise ValueError("--split-pages requires --page-range START END.")
-        parsed_document = process_split_pages(document_path, page_range, page_timeout_seconds)
+        parsed_document = split_pages.process_split_pages(
+            document_path,
+            page_range,
+            page_timeout_seconds,
+        )
     else:
         parsed_document = process_document(document_path, page_range)
 

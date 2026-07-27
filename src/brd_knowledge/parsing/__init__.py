@@ -1,1 +1,1 @@
-"""Document parsing interfaces and adapters."""
+"""Document parsing interfaces, adapters, and orchestration helpers."""
