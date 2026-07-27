@@ -4,15 +4,21 @@ import pytest
 
 from brd_knowledge.parsing.base import DocumentParser
 from brd_knowledge.parsing.options import ParseOptions
-from brd_knowledge.schemas.document import DocumentMetadata, ParsedDocument
+from brd_knowledge.schemas.document import DocumentMetadata, Page, ParsedDocument, ParserMetadata
+from brd_knowledge.schemas.table import ParsedTable, TableCell, TableRow
 from brd_knowledge.services.ingestion_service import IngestionService
 
 
 class FakeParser(DocumentParser):
     parser_name = "fake"
 
-    def __init__(self, supported_suffix: str = ".pdf") -> None:
+    def __init__(
+        self,
+        supported_suffix: str = ".pdf",
+        result: ParsedDocument | None = None,
+    ) -> None:
         self.supported_suffix = supported_suffix
+        self.result = result
         self.parsed_paths: list[Path] = []
 
     def can_parse(self, file_path: Path) -> bool:
@@ -20,6 +26,8 @@ class FakeParser(DocumentParser):
 
     def parse(self, file_path: Path) -> ParsedDocument:
         self.parsed_paths.append(file_path)
+        if self.result is not None:
+            return self.result
         return parsed_document(file_path)
 
 
@@ -83,6 +91,51 @@ def test_ingest_rejects_unsupported_file() -> None:
 
     with pytest.raises(ValueError, match="No parser registered"):
         service.ingest(Path("sample.xlsx"))
+
+
+def test_ingest_with_result_summarizes_parsed_document() -> None:
+    document = ParsedDocument(
+        metadata=DocumentMetadata(
+            document_id="sample",
+            filename="sample.pdf",
+            file_type="pdf",
+            page_count=2,
+            parser_name="fake",
+        ),
+        parser_metadata=ParserMetadata(
+            parser_name="fake",
+            parse_status="partial_success",
+        ),
+        pages=[
+            Page(page_number=1, parse_status="success"),
+            Page(page_number=2, parse_status="failed"),
+        ],
+        tables=[
+            ParsedTable(
+                table_id="table-1",
+                rows=[
+                    TableRow(
+                        row_index=0,
+                        cells=[TableCell(row_index=0, column_index=0, text="Requirement")],
+                    )
+                ],
+                cells=[TableCell(row_index=0, column_index=0, text="Requirement")],
+            )
+        ],
+    )
+
+    parser = FakeParser(result=document)
+    service = IngestionService(parsers=[parser])
+
+    result = service.ingest_with_result(Path("sample.pdf"))
+
+    assert result.document_id == "sample"
+    assert result.parse_status == "partial_success"
+    assert result.page_count == 2
+    assert result.table_count == 1
+    assert result.table_cell_count == 1
+    assert result.failed_page_count == 1
+    assert result.parsed_document == document
 
 
 def test_parse_options_validate_split_page_range() -> None:

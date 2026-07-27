@@ -5,6 +5,7 @@ from brd_knowledge.parsing.base import DocumentParser
 from brd_knowledge.parsing.options import ParseOptions
 from brd_knowledge.parsing.split_pages import process_split_pages
 from brd_knowledge.schemas.document import ParsedDocument
+from brd_knowledge.schemas.ingestion import IngestionResult
 
 
 class SplitPageProcessor(Protocol):
@@ -38,6 +39,13 @@ class IngestionService:
                 parse_options.page_timeout_seconds,
             )
         return parser.parse(file_path)
+
+    def ingest_with_result(
+        self,
+        file_path: Path,
+        options: ParseOptions | None = None,
+    ) -> IngestionResult:
+        return IngestionResult.from_parsed_document(self.ingest(file_path, options))
 
     def _select_parser(self, file_path: Path) -> DocumentParser:
         for parser in self._parsers:
