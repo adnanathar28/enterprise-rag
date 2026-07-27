@@ -4,6 +4,7 @@ from shutil import copy2
 from fastapi.testclient import TestClient
 
 from brd_knowledge.api.dependencies import (
+    document_persistence_service_dependency,
     file_intake_service_dependency,
     ingestion_service_dependency,
 )
@@ -66,11 +67,25 @@ class FakeIngestionService:
         return IngestionResult.from_parsed_document(parsed_document)
 
 
+class FakeDocumentPersistenceService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[StoredSourceFile, IngestionResult]] = []
+
+    def save_ingestion_result(
+        self,
+        stored_file: StoredSourceFile,
+        ingestion_result: IngestionResult,
+    ) -> None:
+        self.calls.append((stored_file, ingestion_result))
+
+
 def test_ingest_document_upload_returns_summary(tmp_path: Path) -> None:
     intake_service = FakeFileIntakeService(tmp_path / "source_files")
     ingestion_service = FakeIngestionService()
+    persistence_service = FakeDocumentPersistenceService()
     app.dependency_overrides[file_intake_service_dependency] = lambda: intake_service
     app.dependency_overrides[ingestion_service_dependency] = lambda: ingestion_service
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
 
     try:
         client = TestClient(app)
@@ -97,13 +112,17 @@ def test_ingest_document_upload_returns_summary(tmp_path: Path) -> None:
     }
     assert intake_service.calls[0][1] == "sample.pdf"
     assert ingestion_service.calls[0][0] == tmp_path / "source_files" / "stored.pdf"
+    assert persistence_service.calls[0][0].stored_filename == "stored.pdf"
+    assert persistence_service.calls[0][1].document_id == "doc-001"
 
 
 def test_ingest_document_passes_split_page_options(tmp_path: Path) -> None:
     intake_service = FakeFileIntakeService(tmp_path / "source_files")
     ingestion_service = FakeIngestionService()
+    persistence_service = FakeDocumentPersistenceService()
     app.dependency_overrides[file_intake_service_dependency] = lambda: intake_service
     app.dependency_overrides[ingestion_service_dependency] = lambda: ingestion_service
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
 
     try:
         client = TestClient(app)
@@ -131,8 +150,10 @@ def test_ingest_document_passes_split_page_options(tmp_path: Path) -> None:
 def test_ingest_document_rejects_invalid_page_range(tmp_path: Path) -> None:
     intake_service = FakeFileIntakeService(tmp_path / "source_files")
     ingestion_service = FakeIngestionService()
+    persistence_service = FakeDocumentPersistenceService()
     app.dependency_overrides[file_intake_service_dependency] = lambda: intake_service
     app.dependency_overrides[ingestion_service_dependency] = lambda: ingestion_service
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
 
     try:
         client = TestClient(app)
@@ -148,6 +169,7 @@ def test_ingest_document_rejects_invalid_page_range(tmp_path: Path) -> None:
     assert "Both page_start and page_end are required" in response.json()["detail"]
     assert intake_service.calls == []
     assert ingestion_service.calls == []
+    assert persistence_service.calls == []
 
 
 def test_ingest_document_returns_intake_validation_errors(tmp_path: Path) -> None:
@@ -156,8 +178,10 @@ def test_ingest_document_returns_intake_validation_errors(tmp_path: Path) -> Non
         fail_with=ValueError("Unsupported file extension '.exe'. Expected one of: .pdf"),
     )
     ingestion_service = FakeIngestionService()
+    persistence_service = FakeDocumentPersistenceService()
     app.dependency_overrides[file_intake_service_dependency] = lambda: intake_service
     app.dependency_overrides[ingestion_service_dependency] = lambda: ingestion_service
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
 
     try:
         client = TestClient(app)
@@ -171,3 +195,4 @@ def test_ingest_document_returns_intake_validation_errors(tmp_path: Path) -> Non
     assert response.status_code == 400
     assert "Unsupported file extension" in response.json()["detail"]
     assert ingestion_service.calls == []
+    assert persistence_service.calls == []

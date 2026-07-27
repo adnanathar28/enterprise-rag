@@ -1,5 +1,12 @@
+from typing import Annotated
+
+from fastapi import Depends
+from sqlalchemy.orm import Session
+
 from brd_knowledge.core.config import Settings, get_settings
+from brd_knowledge.database.session import get_db_session
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
+from brd_knowledge.services.document_persistence_service import DocumentPersistenceService
 from brd_knowledge.services.file_intake_service import FileIntakeService
 from brd_knowledge.services.ingestion_service import IngestionService
 
@@ -19,3 +26,9 @@ def file_intake_service_dependency() -> FileIntakeService:
 
 def ingestion_service_dependency() -> IngestionService:
     return IngestionService(parsers=[DoclingDocumentParser()])
+
+
+def document_persistence_service_dependency(
+    session: Annotated[Session, Depends(get_db_session)],
+) -> DocumentPersistenceService:
+    return DocumentPersistenceService(session)

@@ -5,11 +5,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from brd_knowledge.api.dependencies import (
+    document_persistence_service_dependency,
     file_intake_service_dependency,
     ingestion_service_dependency,
 )
 from brd_knowledge.parsing.options import ParseOptions
 from brd_knowledge.schemas.ingestion import IngestionSummary
+from brd_knowledge.services.document_persistence_service import DocumentPersistenceService
 from brd_knowledge.services.file_intake_service import FileIntakeService
 from brd_knowledge.services.ingestion_service import IngestionService
 
@@ -27,6 +29,10 @@ async def ingest_document(
     file: Annotated[UploadFile, File()],
     file_intake_service: Annotated[FileIntakeService, Depends(file_intake_service_dependency)],
     ingestion_service: Annotated[IngestionService, Depends(ingestion_service_dependency)],
+    document_persistence_service: Annotated[
+        DocumentPersistenceService,
+        Depends(document_persistence_service_dependency),
+    ],
     split_pages: Annotated[bool, Form()] = False,
     page_start: Annotated[int | None, Form()] = None,
     page_end: Annotated[int | None, Form()] = None,
@@ -47,6 +53,7 @@ async def ingest_document(
                 original_filename=file.filename,
             )
         result = ingestion_service.ingest_with_result(stored_file.stored_path, parse_options)
+        document_persistence_service.save_ingestion_result(stored_file, result)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
