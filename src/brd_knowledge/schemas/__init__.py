@@ -8,7 +8,7 @@ from brd_knowledge.schemas.document import (
     ParserMetadata,
     TextBlock,
 )
-from brd_knowledge.schemas.ingestion import IngestionResult
+from brd_knowledge.schemas.ingestion import IngestionResult, IngestionSummary
 from brd_knowledge.schemas.requirement import ExtractedRequirement
 from brd_knowledge.schemas.section import DocumentSection
 from brd_knowledge.schemas.source import BoundingBox, SourceReference
@@ -22,6 +22,7 @@ __all__ = [
     "DocumentSection",
     "ExtractedRequirement",
     "IngestionResult",
+    "IngestionSummary",
     "Page",
     "ParsedDocument",
     "ParsedImage",

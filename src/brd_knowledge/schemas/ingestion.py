@@ -40,3 +40,33 @@ class IngestionResult(BaseModel):
             ),
             parsed_document=parsed_document,
         )
+
+
+class IngestionSummary(BaseModel):
+    document_id: str
+    filename: str
+    parse_status: ParseStatus | None = None
+    page_count: int
+    block_count: int
+    table_count: int
+    table_cell_count: int
+    image_count: int
+    section_count: int
+    diagnostic_count: int
+    failed_page_count: int
+
+    @classmethod
+    def from_ingestion_result(cls, result: IngestionResult) -> "IngestionSummary":
+        return cls(
+            document_id=result.document_id,
+            filename=result.filename,
+            parse_status=result.parse_status,
+            page_count=result.page_count,
+            block_count=result.block_count,
+            table_count=result.table_count,
+            table_cell_count=result.table_cell_count,
+            image_count=result.image_count,
+            section_count=result.section_count,
+            diagnostic_count=result.diagnostic_count,
+            failed_page_count=result.failed_page_count,
+        )
