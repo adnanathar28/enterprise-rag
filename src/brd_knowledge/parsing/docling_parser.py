@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from brd_knowledge.core.exceptions import ParserError
 from brd_knowledge.parsing.base import DocumentParser
+from brd_knowledge.parsing.section_reconstruction import is_semantic_block
 from brd_knowledge.schemas.document import (
     DocumentBlock,
     DocumentMetadata,
@@ -141,25 +142,25 @@ class DoclingDocumentParser(DocumentParser):
             reading_order_index = reading_order.get(self_ref, index)
             block_id = self._id_from_ref(self_ref, fallback=f"block-{index}")
             bounding_box = self._first_bounding_box(item)
-            blocks.append(
-                TextBlock(
-                    block_id=block_id,
+            block = TextBlock(
+                block_id=block_id,
+                page_number=page_number,
+                text=text,
+                block_type=self._label(item),
+                reading_order_index=reading_order_index,
+                bounding_box=bounding_box,
+                source=SourceReference(
+                    document_id=document_id,
                     page_number=page_number,
-                    text=text,
-                    block_type=self._label(item),
+                    parser_item_id=self_ref,
+                    block_id=block_id,
                     reading_order_index=reading_order_index,
+                    text_excerpt=self._excerpt(text),
                     bounding_box=bounding_box,
-                    source=SourceReference(
-                        document_id=document_id,
-                        page_number=page_number,
-                        parser_item_id=self_ref,
-                        block_id=block_id,
-                        reading_order_index=reading_order_index,
-                        text_excerpt=self._excerpt(text),
-                        bounding_box=bounding_box,
-                    ),
-                )
+                ),
             )
+            if is_semantic_block(block):
+                blocks.append(block)
         return sorted(blocks, key=lambda block: (block.page_number, block.reading_order_index or 0))
 
     def _build_tables(

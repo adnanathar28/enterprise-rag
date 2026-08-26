@@ -7,6 +7,10 @@ from queue import Empty
 from typing import Any
 
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
+from brd_knowledge.parsing.section_reconstruction import (
+    is_semantic_block,
+    rebuild_document_sections,
+)
 from brd_knowledge.schemas.document import (
     DocumentBlock,
     DocumentMetadata,
@@ -141,7 +145,6 @@ def merge_parsed_documents(documents: list[ParsedDocument]) -> ParsedDocument:
 
     for document in documents:
         merged.pages.extend(document.pages)
-        merged.sections.extend(document.sections)
         merged.blocks.extend(document.blocks)
         merged.paragraphs.extend(document.paragraphs)
         merged.tables.extend(document.tables)
@@ -149,11 +152,57 @@ def merge_parsed_documents(documents: list[ParsedDocument]) -> ParsedDocument:
         merged.diagnostics.extend(document.diagnostics)
 
     merged.pages.sort(key=lambda page: page.page_number)
-    merged.blocks.sort(key=lambda block: (block.page_number, block.reading_order_index or 0))
-    merged.paragraphs.sort(key=lambda block: (block.page_number, block.reading_order_index or 0))
-    merged.tables.sort(key=lambda table: (table.page_number or 0, table.reading_order_index or 0))
-    merged.images.sort(key=lambda image: (image.page_number, image.reading_order_index or 0))
-    merged.sections.sort(key=lambda section: (section.page_start, section.section_id))
+    for page in merged.pages:
+        page.blocks = sorted(
+            (block for block in page.blocks if is_semantic_block(block)),
+            key=lambda block: (
+                block.reading_order_index
+                if block.reading_order_index is not None
+                else 10**9,
+                block.block_id,
+            ),
+        )
+    merged.blocks = [block for block in merged.blocks if is_semantic_block(block)]
+    merged.paragraphs = [
+        paragraph for paragraph in merged.paragraphs if is_semantic_block(paragraph)
+    ]
+    merged.blocks.sort(
+        key=lambda block: (
+            block.page_number,
+            block.reading_order_index
+            if block.reading_order_index is not None
+            else 10**9,
+            block.block_id,
+        )
+    )
+    merged.paragraphs.sort(
+        key=lambda block: (
+            block.page_number,
+            block.reading_order_index
+            if block.reading_order_index is not None
+            else 10**9,
+            block.block_id,
+        )
+    )
+    merged.tables.sort(
+        key=lambda table: (
+            table.page_number or 0,
+            table.reading_order_index
+            if table.reading_order_index is not None
+            else 10**9,
+            table.table_id,
+        )
+    )
+    merged.images.sort(
+        key=lambda image: (
+            image.page_number,
+            image.reading_order_index
+            if image.reading_order_index is not None
+            else 10**9,
+            image.image_id,
+        )
+    )
+    merged.sections = rebuild_document_sections(merged.metadata.document_id, merged.blocks)
     merged.metadata.page_count = len(merged.pages)
 
     if merged.parser_metadata is not None:

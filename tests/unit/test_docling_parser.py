@@ -134,6 +134,21 @@ def test_docling_adapter_marks_pages_with_diagnostics_as_failed() -> None:
     assert pages[0].diagnostics == [diagnostic]
 
 
+def test_docling_adapter_excludes_page_footers_from_semantic_blocks() -> None:
+    parser = DoclingDocumentParser(page_range=(1, 1))
+    heading = text_item("#/texts/0", "section_header", "1) Scope")
+    footer = text_item("#/texts/1", "page_footer", "12")
+    docling_document = SimpleNamespace(texts=[heading, footer])
+
+    blocks = parser._build_blocks(
+        docling_document,
+        document_id="doc-001",
+        reading_order={"#/texts/0": 1},
+    )
+
+    assert [block.block_id for block in blocks] == ["texts-0"]
+
+
 def test_docling_adapter_uses_unique_logical_table_cells_for_rows() -> None:
     parser = DoclingDocumentParser(page_range=(1, 1))
     spanned_header = table_cell(
