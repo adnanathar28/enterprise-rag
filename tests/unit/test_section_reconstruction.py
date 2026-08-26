@@ -163,6 +163,24 @@ def test_merge_excludes_page_footer_from_pages_blocks_and_sections() -> None:
     assert all(item.block_type != "page_footer" for item in merged.paragraphs)
 
 
+def test_footer_brand_artifact_is_excluded_without_filtering_body_text() -> None:
+    heading = block("heading", "Scope", 1, 1, "section_header")
+    body_fero = block("body-fero", "FERO", 1, 2)
+    footer_fero = block("footer-fero", "FEPO", 1, 3)
+    footer_fero.bounding_box = BoundingBox(
+        page_number=1,
+        x0=466,
+        y0=53,
+        x1=524,
+        y1=44,
+        coordinate_origin="unknown",
+    )
+
+    sections = rebuild_document_sections("doc-1", [footer_fero, body_fero, heading])
+
+    assert [item.block_id for item in sections[0].blocks] == ["heading", "body-fero"]
+
+
 def test_unnumbered_headings_remain_level_one_roots() -> None:
     overview = block("overview", "Overview", 1, 1, "section_header")
     details = block("details", "Details", 1, 2, "section_header")

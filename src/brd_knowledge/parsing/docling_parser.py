@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from brd_knowledge.core.exceptions import ParserError
 from brd_knowledge.parsing.base import DocumentParser
+from brd_knowledge.parsing.reading_order import stabilize_reading_order
 from brd_knowledge.parsing.section_reconstruction import (
     is_semantic_block,
     rebuild_document_sections,
@@ -77,6 +78,7 @@ class DoclingDocumentParser(DocumentParser):
         blocks = self._build_blocks(docling_document, document_id, reading_order)
         tables = self._build_tables(docling_document, document_id, reading_order)
         images = self._build_images(docling_document, document_id, reading_order)
+        stabilize_reading_order(blocks, tables, images)
         document_blocks: list[DocumentBlock] = list(blocks)
         pages = self._build_pages(
             docling_document,

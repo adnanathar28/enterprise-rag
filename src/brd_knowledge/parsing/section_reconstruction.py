@@ -11,10 +11,22 @@ from brd_knowledge.schemas.table import ParsedTable
 NUMBERED_HEADING_PATTERN = re.compile(
     r"^\s*(?:(?P<nested>\d+(?:\.\d+)+)(?:[.)])?(?=\s|$)|(?P<top>\d+)[.)])\s*"
 )
+FOOTER_BRAND_TEXT = frozenset({"F", "ERO", "FERO", "FEPO", "EEPO", "CCD", "CCC"})
 
 
 def is_semantic_block(block: DocumentBlock) -> bool:
-    return block.block_type != "page_footer"
+    return block.block_type != "page_footer" and not _is_footer_brand_artifact(block)
+
+
+def _is_footer_brand_artifact(block: DocumentBlock) -> bool:
+    bounding_box = block.bounding_box
+    return (
+        block.block_type == "text"
+        and block.text.strip().upper() in FOOTER_BRAND_TEXT
+        and bounding_box is not None
+        and bounding_box.x0 >= 450
+        and min(bounding_box.y0, bounding_box.y1) <= 60
+    )
 
 
 def infer_heading_level(heading_text: str) -> int:
