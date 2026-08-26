@@ -8,6 +8,7 @@ from brd_knowledge.schemas.document import (
     TextBlock,
 )
 from brd_knowledge.schemas.source import BoundingBox, SourceReference
+from brd_knowledge.schemas.table import ParsedTable
 
 
 def block(
@@ -43,6 +44,30 @@ def block(
     )
 
 
+def table(table_id: str, page_number: int, reading_order_index: int) -> ParsedTable:
+    bounding_box = BoundingBox(
+        page_number=page_number,
+        x0=10,
+        y0=50,
+        x1=100,
+        y1=90,
+        coordinate_origin="top_left",
+    )
+    return ParsedTable(
+        table_id=table_id,
+        page_number=page_number,
+        page_numbers=[page_number],
+        reading_order_index=reading_order_index,
+        bounding_box=bounding_box,
+        source=SourceReference(
+            document_id="doc-1",
+            page_number=page_number,
+            parser_item_id=f"#/tables/{table_id}",
+            table_id=table_id,
+            reading_order_index=reading_order_index,
+            bounding_box=bounding_box,
+        ),
+    )
 def test_rebuilds_numbered_hierarchy_and_section_boundaries_across_pages() -> None:
     master = block("master", "1) Master Data Setup", 1, 1, "section_header")
     master_intro = block("master-intro", "Master data introduction.", 1, 2)
@@ -189,3 +214,36 @@ def test_unnumbered_heading_does_not_replace_numbered_parent() -> None:
     assert [child.title for child in sections[2].child_sections] == [
         "2.1 Order Status Model"
     ]
+
+
+def test_tables_attach_to_active_section_in_document_order_across_pages() -> None:
+    scope = block("scope", "1) Scope", 1, 1, "section_header")
+    scope_table = table("scope-table", 1, 3)
+    continuation_table = table("scope-table-continuation", 2, 1)
+    requirements = block("requirements", "2) Requirements", 2, 2, "section_header")
+    requirements_table = table("requirements-table", 2, 3)
+
+    sections = rebuild_document_sections(
+        "doc-1",
+        [requirements, scope],
+        [requirements_table, continuation_table, scope_table],
+    )
+
+    assert [item.table_id for item in sections[0].tables] == [
+        "scope-table",
+        "scope-table-continuation",
+    ]
+    assert sections[0].page_end == 2
+    assert [item.table_id for item in sections[1].tables] == ["requirements-table"]
+    assert sections[0].tables[0].source == scope_table.source
+    assert sections[0].tables[0].table_id == scope_table.table_id
+
+
+def test_table_before_first_heading_remains_unassociated() -> None:
+    preface_table = table("preface-table", 1, 1)
+    scope = block("scope", "Scope", 1, 2, "section_header")
+
+    sections = rebuild_document_sections("doc-1", [scope], [preface_table])
+
+    assert len(sections) == 1
+    assert sections[0].tables == []

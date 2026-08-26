@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from brd_knowledge.schemas.document import DocumentBlock, TextBlock
 from brd_knowledge.schemas.section import DocumentSection
 from brd_knowledge.schemas.source import SourceReference
+from brd_knowledge.schemas.table import ParsedTable
 
 NUMBERED_HEADING_PATTERN = re.compile(
     r"^\s*(?:(?P<nested>\d+(?:\.\d+)+)(?:[.)])?(?=\s|$)|(?P<top>\d+)[.)])\s*"
@@ -30,22 +31,28 @@ def infer_heading_level(heading_text: str) -> int:
 def rebuild_document_sections(
     document_id: str,
     blocks: Sequence[DocumentBlock],
+    tables: Sequence[ParsedTable] = (),
 ) -> list[DocumentSection]:
-    ordered_blocks = sorted(
-        (block for block in blocks if is_semantic_block(block)),
-        key=lambda block: (
-            block.page_number,
-            block.reading_order_index
-            if block.reading_order_index is not None
-            else 10**9,
-            block.block_id,
-        ),
+    ordered_items = sorted(
+        [block for block in blocks if is_semantic_block(block)] + list(tables),
+        key=_content_order_key,
     )
     root_sections: list[DocumentSection] = []
     active_section: DocumentSection | None = None
     numbered_section_stack: list[DocumentSection] = []
 
-    for block in ordered_blocks:
+    for item in ordered_items:
+        if isinstance(item, ParsedTable):
+            if active_section is not None:
+                active_section.tables.append(item)
+                if item.page_number is not None:
+                    active_section.page_end = max(
+                        active_section.page_end or item.page_number,
+                        item.page_number,
+                    )
+            continue
+
+        block = item
         if block.block_type == "section_header":
             level = infer_heading_level(block.text)
             is_numbered = NUMBERED_HEADING_PATTERN.match(block.text) is not None
@@ -98,6 +105,21 @@ def rebuild_document_sections(
     for section in root_sections:
         _extend_page_end_through_children(section)
     return root_sections
+
+
+def _content_order_key(item: DocumentBlock | ParsedTable) -> tuple[int, int, int, str]:
+    is_table = isinstance(item, ParsedTable)
+    page_number = item.page_number
+    if isinstance(item, ParsedTable):
+        item_id = item.table_id
+    else:
+        item_id = item.block_id
+    return (
+        page_number if page_number is not None else 10**9,
+        item.reading_order_index if item.reading_order_index is not None else 10**9,
+        1 if is_table else 0,
+        item_id,
+    )
 
 
 def _as_text_block(block: DocumentBlock) -> TextBlock:

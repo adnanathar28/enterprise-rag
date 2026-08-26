@@ -202,7 +202,11 @@ def merge_parsed_documents(documents: list[ParsedDocument]) -> ParsedDocument:
             image.image_id,
         )
     )
-    merged.sections = rebuild_document_sections(merged.metadata.document_id, merged.blocks)
+    merged.sections = rebuild_document_sections(
+        merged.metadata.document_id,
+        merged.blocks,
+        merged.tables,
+    )
     merged.metadata.page_count = len(merged.pages)
 
     if merged.parser_metadata is not None:

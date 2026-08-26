@@ -93,7 +93,7 @@ def test_docling_adapter_normalizes_blocks_tables_images_and_pages() -> None:
         tables,
         images,
     )
-    sections = parser._build_sections("doc-001", blocks)
+    sections = parser._build_sections("doc-001", blocks, tables)
 
     assert blocks[0].block_type == "section_header"
     assert blocks[0].source is not None
@@ -106,6 +106,7 @@ def test_docling_adapter_normalizes_blocks_tables_images_and_pages() -> None:
     assert pages[0].blocks == blocks
     assert pages[0].tables == tables
     assert sections[0].title == "Scope"
+    assert sections[0].tables == tables
 
 
 def test_docling_adapter_marks_pages_with_diagnostics_as_failed() -> None:

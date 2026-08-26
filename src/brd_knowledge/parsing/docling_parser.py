@@ -86,7 +86,7 @@ class DoclingDocumentParser(DocumentParser):
             tables,
             images,
         )
-        sections = self._build_sections(document_id, blocks)
+        sections = self._build_sections(document_id, blocks, tables)
 
         return ParsedDocument(
             metadata=DocumentMetadata(
@@ -381,8 +381,13 @@ class DoclingDocumentParser(DocumentParser):
             )
         return pages
 
-    def _build_sections(self, document_id: str, blocks: list[TextBlock]) -> list[DocumentSection]:
-        return rebuild_document_sections(document_id, blocks)
+    def _build_sections(
+        self,
+        document_id: str,
+        blocks: list[TextBlock],
+        tables: list[ParsedTable] | None = None,
+    ) -> list[DocumentSection]:
+        return rebuild_document_sections(document_id, blocks, tables or [])
 
     def _build_diagnostics(self, result: Any, docling_version: str) -> list[ParserDiagnostic]:
         diagnostics = []
