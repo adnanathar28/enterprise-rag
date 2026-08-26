@@ -8,7 +8,10 @@ from typing import Any, cast
 
 from brd_knowledge.core.exceptions import ParserError
 from brd_knowledge.parsing.base import DocumentParser
-from brd_knowledge.parsing.section_reconstruction import is_semantic_block
+from brd_knowledge.parsing.section_reconstruction import (
+    is_semantic_block,
+    rebuild_document_sections,
+)
 from brd_knowledge.schemas.document import (
     DocumentBlock,
     DocumentMetadata,
@@ -379,49 +382,7 @@ class DoclingDocumentParser(DocumentParser):
         return pages
 
     def _build_sections(self, document_id: str, blocks: list[TextBlock]) -> list[DocumentSection]:
-        sections = []
-        section_headers = [block for block in blocks if block.block_type == "section_header"]
-        for index, heading in enumerate(section_headers):
-            next_heading = section_headers[index + 1] if index + 1 < len(section_headers) else None
-            section_blocks = [
-                block
-                for block in blocks
-                if block.reading_order_index is not None
-                and heading.reading_order_index is not None
-                and block.reading_order_index >= heading.reading_order_index
-                and (
-                    next_heading is None
-                    or next_heading.reading_order_index is None
-                    or block.reading_order_index < next_heading.reading_order_index
-                )
-            ]
-            document_blocks: list[DocumentBlock] = list(section_blocks)
-            section_id = f"section-{index}"
-            sections.append(
-                DocumentSection(
-                    section_id=section_id,
-                    title=heading.text,
-                    level=1,
-                    page_start=heading.page_number,
-                    page_end=(
-                        section_blocks[-1].page_number if section_blocks else heading.page_number
-                    ),
-                    source=SourceReference(
-                        document_id=document_id,
-                        page_number=heading.page_number,
-                        section_id=section_id,
-                        block_id=heading.block_id,
-                        reading_order_index=heading.reading_order_index,
-                        text_excerpt=self._excerpt(heading.text),
-                        bounding_box=heading.bounding_box,
-                    ),
-                    heading_block=heading,
-                    blocks=document_blocks,
-                    paragraphs=section_blocks,
-                    tables=[],
-                )
-            )
-        return sections
+        return rebuild_document_sections(document_id, blocks)
 
     def _build_diagnostics(self, result: Any, docling_version: str) -> list[ParserDiagnostic]:
         diagnostics = []

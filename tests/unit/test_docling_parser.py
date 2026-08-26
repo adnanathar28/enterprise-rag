@@ -149,6 +149,29 @@ def test_docling_adapter_excludes_page_footers_from_semantic_blocks() -> None:
     assert [block.block_id for block in blocks] == ["texts-0"]
 
 
+def test_docling_adapter_uses_document_section_reconstruction() -> None:
+    parser = DoclingDocumentParser()
+    parent = text_item("#/texts/0", "section_header", "1) Master Data", page_no=1)
+    child = text_item("#/texts/1", "section_header", "1.1 Vehicles", page_no=1)
+    paragraph = text_item("#/texts/2", "text", "Vehicle details.", page_no=1)
+    docling_document = SimpleNamespace(texts=[paragraph, child, parent])
+    reading_order = {
+        "#/texts/0": 1,
+        "#/texts/1": 2,
+        "#/texts/2": 3,
+    }
+
+    blocks = parser._build_blocks(docling_document, "doc-001", reading_order)
+    sections = parser._build_sections("doc-001", blocks)
+
+    assert [section.title for section in sections] == ["1) Master Data"]
+    assert [section.title for section in sections[0].child_sections] == ["1.1 Vehicles"]
+    assert [block.block_id for block in sections[0].child_sections[0].blocks] == [
+        "texts-1",
+        "texts-2",
+    ]
+
+
 def test_docling_adapter_uses_unique_logical_table_cells_for_rows() -> None:
     parser = DoclingDocumentParser(page_range=(1, 1))
     spanned_header = table_cell(

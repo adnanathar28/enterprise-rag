@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from brd_knowledge.schemas.document import DocumentBlock, TextBlock
 from brd_knowledge.schemas.section import DocumentSection
@@ -28,7 +29,7 @@ def infer_heading_level(heading_text: str) -> int:
 
 def rebuild_document_sections(
     document_id: str,
-    blocks: list[DocumentBlock],
+    blocks: Sequence[DocumentBlock],
 ) -> list[DocumentSection]:
     ordered_blocks = sorted(
         (block for block in blocks if is_semantic_block(block)),
