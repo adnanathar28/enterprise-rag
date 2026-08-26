@@ -8,7 +8,7 @@ from brd_knowledge.schemas.section import DocumentSection
 from brd_knowledge.schemas.source import SourceReference
 
 NUMBERED_HEADING_PATTERN = re.compile(
-    r"^\s*(?:(?P<nested>\d+(?:\.\d+)+)(?:[.)])?|(?P<top>\d+)[.)])\s+"
+    r"^\s*(?:(?P<nested>\d+(?:\.\d+)+)(?:[.)])?(?=\s|$)|(?P<top>\d+)[.)])\s*"
 )
 
 
@@ -42,11 +42,13 @@ def rebuild_document_sections(
         ),
     )
     root_sections: list[DocumentSection] = []
-    section_stack: list[DocumentSection] = []
+    active_section: DocumentSection | None = None
+    numbered_section_stack: list[DocumentSection] = []
 
     for block in ordered_blocks:
         if block.block_type == "section_header":
             level = infer_heading_level(block.text)
+            is_numbered = NUMBERED_HEADING_PATTERN.match(block.text) is not None
             section_id = f"section-{block.block_id}"
             heading_block = _as_text_block(block)
             section = DocumentSection(
@@ -69,17 +71,23 @@ def rebuild_document_sections(
                 paragraphs=[heading_block],
             )
 
-            while section_stack and section_stack[-1].level >= level:
-                section_stack.pop()
-            if section_stack:
-                section_stack[-1].child_sections.append(section)
-            else:
+            if not is_numbered:
+                # Docling does not provide dependable hierarchy for unnumbered
+                # headings. Keep them as level-one roots without allowing them to
+                # erase the active numbered ancestry.
                 root_sections.append(section)
-            section_stack.append(section)
+            else:
+                while numbered_section_stack and numbered_section_stack[-1].level >= level:
+                    numbered_section_stack.pop()
+                if numbered_section_stack:
+                    numbered_section_stack[-1].child_sections.append(section)
+                else:
+                    root_sections.append(section)
+                numbered_section_stack.append(section)
+            active_section = section
             continue
 
-        if section_stack:
-            active_section = section_stack[-1]
+        if active_section is not None:
             active_section.blocks.append(block)
             active_section.paragraphs.append(_as_text_block(block))
             active_section.page_end = max(

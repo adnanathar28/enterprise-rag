@@ -146,3 +146,46 @@ def test_unnumbered_headings_remain_level_one_roots() -> None:
 
     assert [section.level for section in sections] == [1, 1]
     assert all(not section.child_sections for section in sections)
+
+
+def test_unnumbered_heading_does_not_replace_numbered_parent() -> None:
+    master = block("master", "1)Master Data Setup", 1, 1, "section_header")
+    package = block("package", "1.8 Package Configuration", 1, 2, "section_header")
+    operational_rules = block("rules", "Operational Rules:", 2, 1, "section_header")
+    rule_text = block("rule-text", "Invoices must not be split.", 2, 2)
+    validation = block("validation", "1.9 Pre-Go-Live Validation", 2, 3, "section_header")
+    validation_text = block("validation-text", "Validate all master data.", 2, 4)
+    orders = block("orders", "2) Order Management", 3, 1, "section_header")
+    status = block("status", "2.1 Order Status Model", 3, 2, "section_header")
+
+    sections = rebuild_document_sections(
+        "doc-1",
+        [
+            validation_text,
+            operational_rules,
+            package,
+            status,
+            master,
+            rule_text,
+            orders,
+            validation,
+        ],
+    )
+
+    assert [section.title for section in sections] == [
+        "1)Master Data Setup",
+        "Operational Rules:",
+        "2) Order Management",
+    ]
+    assert [child.title for child in sections[0].child_sections] == [
+        "1.8 Package Configuration",
+        "1.9 Pre-Go-Live Validation",
+    ]
+    assert [block.block_id for block in sections[1].blocks] == ["rules", "rule-text"]
+    assert [block.block_id for block in sections[0].child_sections[1].blocks] == [
+        "validation",
+        "validation-text",
+    ]
+    assert [child.title for child in sections[2].child_sections] == [
+        "2.1 Order Status Model"
+    ]
