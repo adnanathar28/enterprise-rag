@@ -30,4 +30,6 @@ class ParsedTable(BaseModel):
     caption: str | None = None
     bounding_box: BoundingBox | None = None
     source: SourceReference | None = None
+    native_text: str | None = None
+    native_text_coverage: float | None = Field(default=None, ge=0, le=1)
     quality_notes: list[str] = Field(default_factory=list)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections import defaultdict
+import re
+from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from importlib import import_module, metadata
 from pathlib import Path
@@ -31,6 +32,7 @@ from brd_knowledge.schemas.table import ParsedTable, TableCell, TableRow
 
 class DoclingDocumentParser(DocumentParser):
     parser_name = "docling"
+    low_table_text_coverage_threshold = 0.85
 
     def __init__(self, page_range: tuple[int, int] | None = None) -> None:
         self.page_range = page_range
@@ -77,6 +79,8 @@ class DoclingDocumentParser(DocumentParser):
 
         blocks = self._build_blocks(docling_document, document_id, reading_order)
         tables = self._build_tables(docling_document, document_id, reading_order)
+        if resolved_path.suffix.lower() == ".pdf":
+            self._attach_native_table_evidence(resolved_path, tables)
         images = self._build_images(docling_document, document_id, reading_order)
         stabilize_reading_order(blocks, tables, images)
         document_blocks: list[DocumentBlock] = list(blocks)
@@ -313,6 +317,87 @@ class DoclingDocumentParser(DocumentParser):
             ),
         )
 
+    def _attach_native_table_evidence(
+        self,
+        file_path: Path,
+        tables: list[ParsedTable],
+    ) -> None:
+        if not tables:
+            return
+
+        try:
+            pymupdf = import_module("pymupdf")
+            pdf_document = pymupdf.open(file_path)
+        except (ImportError, OSError, RuntimeError):
+            for table in tables:
+                table.quality_notes.append("Native PDF table-text comparison was unavailable.")
+            return
+
+        try:
+            for table in tables:
+                self._attach_native_text_for_table(pdf_document, table, pymupdf)
+        finally:
+            pdf_document.close()
+
+    def _attach_native_text_for_table(
+        self,
+        pdf_document: Any,
+        table: ParsedTable,
+        pymupdf: Any,
+    ) -> None:
+        bbox = table.bounding_box
+        if table.page_number is None or bbox is None:
+            table.quality_notes.append("Native PDF table-text comparison lacked page provenance.")
+            return
+
+        try:
+            page = pdf_document[table.page_number - 1]
+            if bbox.coordinate_origin == "bottom_left":
+                clip = pymupdf.Rect(
+                    bbox.x0,
+                    page.rect.height - bbox.y0,
+                    bbox.x1,
+                    page.rect.height - bbox.y1,
+                )
+            elif bbox.coordinate_origin == "top_left":
+                clip = pymupdf.Rect(bbox.x0, bbox.y0, bbox.x1, bbox.y1)
+            else:
+                table.quality_notes.append(
+                    "Native PDF table-text comparison lacked a known coordinate origin."
+                )
+                return
+
+            words = page.get_text("words", clip=clip, sort=True)
+        except (IndexError, OSError, RuntimeError, ValueError):
+            table.quality_notes.append("Native PDF table-text comparison failed.")
+            return
+
+        native_text = " ".join(str(word[4]) for word in words if str(word[4]).strip()).strip()
+        if not native_text:
+            table.quality_notes.append("No native PDF text was found inside the table region.")
+            return
+
+        structured_text = " ".join(cell.text for cell in table.cells)
+        coverage = self._token_coverage(native_text, structured_text)
+        table.native_text = native_text
+        table.native_text_coverage = coverage
+        if coverage < self.low_table_text_coverage_threshold:
+            table.quality_notes.append(
+                "Structured table text covers only "
+                f"{coverage:.1%} of native table-region tokens; use native_text as a fallback."
+            )
+
+    def _token_coverage(self, source_text: str, candidate_text: str) -> float:
+        source_tokens = Counter(self._normalized_tokens(source_text))
+        if not source_tokens:
+            return 1.0
+        candidate_tokens = Counter(self._normalized_tokens(candidate_text))
+        matched_tokens = sum((source_tokens & candidate_tokens).values())
+        return matched_tokens / sum(source_tokens.values())
+
+    def _normalized_tokens(self, text: str) -> list[str]:
+        return re.findall(r"[a-z0-9%]+", text.casefold())
+
     def _build_images(
         self,
         docling_document: Any,
@@ -470,10 +555,10 @@ class DoclingDocumentParser(DocumentParser):
         return notes
 
     def _coordinate_origin(self, coord_origin: Any) -> CoordinateOrigin:
-        value = str(coord_origin or "").lower()
-        if value == "top-left" or value == "topleft":
+        value = re.sub(r"[^a-z]", "", str(coord_origin or "").lower())
+        if value.endswith("topleft"):
             return "top_left"
-        if value == "bottom-left" or value == "bottomleft":
+        if value.endswith("bottomleft"):
             return "bottom_left"
         return "unknown"
 

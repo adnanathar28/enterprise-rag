@@ -1,7 +1,12 @@
+from pathlib import Path
 from types import SimpleNamespace
+
+import pymupdf
 
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
 from brd_knowledge.schemas.document import DocumentBlock, ParserDiagnostic
+from brd_knowledge.schemas.source import BoundingBox
+from brd_knowledge.schemas.table import ParsedTable, TableCell
 
 
 def bbox() -> SimpleNamespace:
@@ -218,3 +223,75 @@ def test_docling_adapter_uses_unique_logical_table_cells_for_rows() -> None:
     assert tables[0].rows[0].cells[1].text == "Length Width Height"
     assert tables[0].rows[0].cells[1].column_span == 3
     assert len(tables[0].cells) == 6
+
+
+def test_docling_adapter_adds_native_table_text_and_flags_low_coverage(
+    tmp_path: Path,
+) -> None:
+    pdf_path = tmp_path / "table.pdf"
+    document = pymupdf.open()
+    page = document.new_page(width=300, height=300)
+    page.insert_text((50, 80), "Known value omitted requirement")
+    document.save(pdf_path)
+    document.close()
+
+    table = ParsedTable(
+        table_id="table-1",
+        page_number=1,
+        page_numbers=[1],
+        bounding_box=BoundingBox(
+            page_number=1,
+            x0=40,
+            y0=240,
+            x1=260,
+            y1=200,
+            coordinate_origin="bottom_left",
+        ),
+        cells=[TableCell(row_index=0, column_index=0, text="Known value")],
+    )
+
+    DoclingDocumentParser()._attach_native_table_evidence(pdf_path, [table])
+
+    assert table.native_text == "Known value omitted requirement"
+    assert table.native_text_coverage == 0.5
+    assert table.quality_notes == [
+        "Structured table text covers only 50.0% of native table-region tokens; "
+        "use native_text as a fallback."
+    ]
+
+
+def test_docling_adapter_keeps_high_coverage_table_unflagged(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "table.pdf"
+    document = pymupdf.open()
+    page = document.new_page(width=300, height=300)
+    page.insert_text((50, 80), "Complete table text")
+    document.save(pdf_path)
+    document.close()
+
+    table = ParsedTable(
+        table_id="table-1",
+        page_number=1,
+        page_numbers=[1],
+        bounding_box=BoundingBox(
+            page_number=1,
+            x0=40,
+            y0=240,
+            x1=260,
+            y1=200,
+            coordinate_origin="bottom_left",
+        ),
+        cells=[TableCell(row_index=0, column_index=0, text="Complete table text")],
+    )
+
+    DoclingDocumentParser()._attach_native_table_evidence(pdf_path, [table])
+
+    assert table.native_text == "Complete table text"
+    assert table.native_text_coverage == 1.0
+    assert table.quality_notes == []
+
+
+def test_docling_coordinate_origin_recognizes_docling_enum_strings() -> None:
+    parser = DoclingDocumentParser()
+
+    assert parser._coordinate_origin("CoordOrigin.TOPLEFT") == "top_left"
+    assert parser._coordinate_origin("CoordOrigin.BOTTOMLEFT") == "bottom_left"
