@@ -1,3 +1,4 @@
+from brd_knowledge.schemas.chunk import Chunk, ChunkContentType
 from brd_knowledge.schemas.document import (
     DocumentBlock,
     DocumentMetadata,
@@ -21,6 +22,8 @@ from brd_knowledge.schemas.table import ParsedTable, TableCell, TableRow
 
 __all__ = [
     "BoundingBox",
+    "Chunk",
+    "ChunkContentType",
     "DocumentBlock",
     "DocumentMetadata",
     "DocumentSection",
