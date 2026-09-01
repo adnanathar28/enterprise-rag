@@ -3,7 +3,15 @@ from pathlib import Path
 from pytest import MonkeyPatch
 
 from brd_knowledge.parsing import split_pages
-from brd_knowledge.schemas.document import DocumentMetadata, Page, ParsedDocument, ParserMetadata
+from brd_knowledge.schemas.document import (
+    DocumentMetadata,
+    Page,
+    ParsedDocument,
+    ParserMetadata,
+    TextBlock,
+)
+from brd_knowledge.schemas.source import SourceReference
+from brd_knowledge.schemas.table import ParsedTable
 
 
 def parsed_page(page_number: int) -> ParsedDocument:
@@ -80,3 +88,58 @@ def test_split_processing_records_page_timeout(monkeypatch: MonkeyPatch) -> None
     assert [page.parse_status for page in result.pages] == ["success", "failed"]
     assert result.diagnostics[0].error_type == "TimeoutError"
     assert result.diagnostics[0].message == "Page 2 exceeded timeout of 1.0 seconds."
+
+
+def test_merge_removes_repeated_headers_and_keeps_continuation_table_in_section() -> None:
+    heading = TextBlock(
+        block_id="heading",
+        page_number=1,
+        reading_order_index=1,
+        block_type="section_header",
+        text="1) Requirements",
+        source=SourceReference(document_id="sample", page_number=1, block_id="heading"),
+    )
+    first_header = TextBlock(
+        block_id="header",
+        page_number=1,
+        reading_order_index=0,
+        block_type="page_header",
+        text="Sample Document",
+        source=SourceReference(document_id="sample", page_number=1, block_id="header"),
+    )
+    second_header = TextBlock(
+        block_id="header",
+        page_number=2,
+        reading_order_index=0,
+        block_type="section_header",
+        text="Sample Document",
+        source=SourceReference(document_id="sample", page_number=2, block_id="header"),
+    )
+    continuation_table = ParsedTable(
+        table_id="table",
+        page_number=2,
+        page_numbers=[2],
+        reading_order_index=1,
+        source=SourceReference(document_id="sample", page_number=2, table_id="table"),
+    )
+    first_page = parsed_page(1)
+    first_page.blocks = [first_header, heading]
+    first_page.paragraphs = [first_header, heading]
+    first_page.pages[0].blocks = [first_header, heading]
+    second_page = parsed_page(2)
+    second_page.blocks = [second_header]
+    second_page.paragraphs = [second_header]
+    second_page.tables = [continuation_table]
+    second_page.pages[0].blocks = [second_header]
+    second_page.pages[0].tables = [continuation_table]
+
+    merged = split_pages.merge_parsed_documents(
+        [
+            split_pages.prefix_document_ids_for_split_page(first_page, 1),
+            split_pages.prefix_document_ids_for_split_page(second_page, 2),
+        ]
+    )
+
+    assert [item.text for item in merged.blocks] == ["1) Requirements"]
+    assert [section.title for section in merged.sections] == ["1) Requirements"]
+    assert [table.table_id for table in merged.sections[0].tables] == ["page_2_table"]

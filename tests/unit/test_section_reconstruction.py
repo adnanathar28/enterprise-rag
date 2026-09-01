@@ -265,3 +265,41 @@ def test_table_before_first_heading_remains_unassociated() -> None:
 
     assert len(sections) == 1
     assert sections[0].tables == []
+
+
+def test_repeated_page_header_misclassification_does_not_reset_section() -> None:
+    scope = block("scope", "1) Scope", 1, 2, "section_header")
+    header_page_one = block("header-1", "Example Document", 1, 0, "page_header")
+    header_page_two = block("header-2", "Example Document", 2, 0, "page_header")
+    mislabeled_header = block("header-3", "  EXAMPLE   document ", 3, 0, "section_header")
+    continuation = block("continuation", "Continued scope details.", 2, 1)
+    continuation_table = table("continuation-table", 3, 1)
+
+    sections = rebuild_document_sections(
+        "doc-1",
+        [scope, header_page_one, header_page_two, mislabeled_header, continuation],
+        [continuation_table],
+    )
+
+    assert [section.title for section in sections] == ["1) Scope"]
+    assert [item.block_id for item in sections[0].blocks] == ["scope", "continuation"]
+    assert [item.table_id for item in sections[0].tables] == ["continuation-table"]
+    assert sections[0].page_end == 3
+
+
+def test_one_off_page_header_is_not_removed_by_repetition_rule() -> None:
+    scope = block("scope", "1) Scope", 1, 1, "section_header")
+    one_off_header = block("header", "Unique document label", 2, 0, "page_header")
+
+    sections = rebuild_document_sections("doc-1", [scope, one_off_header])
+
+    assert [item.block_id for item in sections[0].blocks] == ["scope", "header"]
+
+
+def test_repeated_real_headings_are_not_removed_without_page_header_evidence() -> None:
+    first = block("first", "Summary", 1, 1, "section_header")
+    second = block("second", "Summary", 2, 1, "section_header")
+
+    sections = rebuild_document_sections("doc-1", [first, second])
+
+    assert [section.title for section in sections] == ["Summary", "Summary"]

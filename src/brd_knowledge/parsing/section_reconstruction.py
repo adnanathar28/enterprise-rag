@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from collections.abc import Sequence
 
 from brd_knowledge.schemas.document import DocumentBlock, TextBlock
@@ -12,10 +13,43 @@ NUMBERED_HEADING_PATTERN = re.compile(
     r"^\s*(?:(?P<nested>\d+(?:\.\d+)+)(?:[.)])?(?=\s|$)|(?P<top>\d+)[.)])\s*"
 )
 FOOTER_BRAND_TEXT = frozenset({"F", "ERO", "FERO", "FEPO", "EEPO", "CCD", "CCC"})
+PAGE_HEADER_TYPES = frozenset({"page_header", "section_header"})
 
 
 def is_semantic_block(block: DocumentBlock) -> bool:
     return block.block_type != "page_footer" and not _is_footer_brand_artifact(block)
+
+
+def repeated_page_header_artifact_ids(
+    blocks: Sequence[DocumentBlock],
+) -> set[str]:
+    """Find repeated headers, including instances Docling mislabeled as sections."""
+    header_signatures: set[str] = set()
+    candidate_pages: dict[str, set[int]] = defaultdict(set)
+    for block in blocks:
+        if block.block_type in PAGE_HEADER_TYPES:
+            candidate_pages[_header_signature(block.text)].add(block.page_number)
+        if block.block_type == "page_header":
+            header_signatures.add(_header_signature(block.text))
+
+    repeated_signatures = {
+        signature
+        for signature in header_signatures
+        if signature and len(candidate_pages[signature]) >= 2
+    }
+    return {
+        block.block_id
+        for block in blocks
+        if block.block_type in PAGE_HEADER_TYPES
+        and _header_signature(block.text) in repeated_signatures
+    }
+
+
+def remove_repeated_page_header_artifacts(
+    blocks: Sequence[DocumentBlock],
+) -> list[DocumentBlock]:
+    artifact_ids = repeated_page_header_artifact_ids(blocks)
+    return [block for block in blocks if block.block_id not in artifact_ids]
 
 
 def _is_footer_brand_artifact(block: DocumentBlock) -> bool:
@@ -45,8 +79,11 @@ def rebuild_document_sections(
     blocks: Sequence[DocumentBlock],
     tables: Sequence[ParsedTable] = (),
 ) -> list[DocumentSection]:
+    semantic_blocks = remove_repeated_page_header_artifacts(
+        [block for block in blocks if is_semantic_block(block)]
+    )
     ordered_items = sorted(
-        [block for block in blocks if is_semantic_block(block)] + list(tables),
+        semantic_blocks + list(tables),
         key=_content_order_key,
     )
     root_sections: list[DocumentSection] = []
@@ -151,3 +188,7 @@ def _excerpt(text: str, limit: int = 240) -> str:
     if len(compact_text) <= limit:
         return compact_text
     return f"{compact_text[: limit - 3]}..."
+
+
+def _header_signature(text: str) -> str:
+    return " ".join(text.casefold().split())

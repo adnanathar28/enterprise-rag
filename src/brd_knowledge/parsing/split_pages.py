@@ -10,6 +10,7 @@ from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
 from brd_knowledge.parsing.section_reconstruction import (
     is_semantic_block,
     rebuild_document_sections,
+    repeated_page_header_artifact_ids,
 )
 from brd_knowledge.schemas.document import (
     DocumentBlock,
@@ -151,10 +152,15 @@ def merge_parsed_documents(documents: list[ParsedDocument]) -> ParsedDocument:
         merged.images.extend(document.images)
         merged.diagnostics.extend(document.diagnostics)
 
+    repeated_header_ids = repeated_page_header_artifact_ids(merged.blocks)
     merged.pages.sort(key=lambda page: page.page_number)
     for page in merged.pages:
         page.blocks = sorted(
-            (block for block in page.blocks if is_semantic_block(block)),
+            (
+                block
+                for block in page.blocks
+                if is_semantic_block(block) and block.block_id not in repeated_header_ids
+            ),
             key=lambda block: (
                 block.reading_order_index
                 if block.reading_order_index is not None
@@ -162,9 +168,15 @@ def merge_parsed_documents(documents: list[ParsedDocument]) -> ParsedDocument:
                 block.block_id,
             ),
         )
-    merged.blocks = [block for block in merged.blocks if is_semantic_block(block)]
+    merged.blocks = [
+        block
+        for block in merged.blocks
+        if is_semantic_block(block) and block.block_id not in repeated_header_ids
+    ]
     merged.paragraphs = [
-        paragraph for paragraph in merged.paragraphs if is_semantic_block(paragraph)
+        paragraph
+        for paragraph in merged.paragraphs
+        if is_semantic_block(paragraph) and paragraph.block_id not in repeated_header_ids
     ]
     merged.blocks.sort(
         key=lambda block: (

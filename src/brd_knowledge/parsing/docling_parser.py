@@ -13,6 +13,7 @@ from brd_knowledge.parsing.reading_order import stabilize_reading_order
 from brd_knowledge.parsing.section_reconstruction import (
     is_semantic_block,
     rebuild_document_sections,
+    remove_repeated_page_header_artifacts,
 )
 from brd_knowledge.schemas.document import (
     DocumentBlock,
@@ -78,6 +79,7 @@ class DoclingDocumentParser(DocumentParser):
         reading_order = self._build_reading_order(docling_document)
 
         blocks = self._build_blocks(docling_document, document_id, reading_order)
+        blocks = cast(list[TextBlock], remove_repeated_page_header_artifacts(blocks))
         tables = self._build_tables(docling_document, document_id, reading_order)
         if resolved_path.suffix.lower() == ".pdf":
             self._attach_native_table_evidence(resolved_path, tables)
