@@ -87,3 +87,13 @@ def test_real_dataset_loads_with_twenty_labeled_examples() -> None:
 
     assert len(dataset.examples) == 20
     assert all(example.relevant_chunk_ids for example in dataset.examples)
+
+
+def test_ids_dataset_loads_with_twenty_labeled_examples() -> None:
+    dataset = load_script().load_dataset(Path("data/evals/ids_retrieval_eval.json"))
+
+    assert len(dataset.examples) == 20
+    assert all(example.relevant_chunk_ids for example in dataset.examples)
+    assert {example.expected_document_id for example in dataset.examples} == {
+        "IDS_BRD_V2_140526 (2).pdf"
+    }
