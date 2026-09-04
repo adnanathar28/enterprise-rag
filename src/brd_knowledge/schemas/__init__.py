@@ -15,6 +15,13 @@ from brd_knowledge.schemas.document import (
     ParserMetadata,
     TextBlock,
 )
+from brd_knowledge.schemas.generation import (
+    GenerationMetadata,
+    GroundedAnswer,
+    GroundedAnswerRequest,
+    ModelAnswerPayload,
+    ResolvedCitation,
+)
 from brd_knowledge.schemas.ingestion import IngestionResult, IngestionSummary
 from brd_knowledge.schemas.persisted_document import (
     PersistedDocumentSummary,
@@ -38,8 +45,12 @@ __all__ = [
     "DocumentMetadata",
     "DocumentSection",
     "ExtractedRequirement",
+    "GenerationMetadata",
+    "GroundedAnswer",
+    "GroundedAnswerRequest",
     "IngestionResult",
     "IngestionSummary",
+    "ModelAnswerPayload",
     "Page",
     "ParsedDocument",
     "ParsedImage",
@@ -48,6 +59,7 @@ __all__ = [
     "ParserMetadata",
     "PersistedDocumentSummary",
     "PersistedParsedDocument",
+    "ResolvedCitation",
     "SourceReference",
     "StoredSourceFile",
     "TableCell",
