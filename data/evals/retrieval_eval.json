@@ -1,0 +1,135 @@
+{
+  "name": "G60c inventory requirements dense retrieval v1",
+  "examples": [
+    {
+      "question": "What downstream development activities use this user requirements document as their basis?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-a613f35943e305a9d454"],
+      "section_page_targets": [{"section_path": ["1.1 PURPOSE"], "pages": [9]}],
+      "notes": "Prose evidence listing design, implementation, testing and post-implementation review."
+    },
+    {
+      "question": "How are inventory records currently maintained before the proposed system?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-13516da9db32326a031a"],
+      "section_page_targets": [{"section_path": ["1.2 PROJECT BACKGROUND"], "pages": [9]}],
+      "notes": "Background prose says records are manually processed and kept in paper folders, spreadsheets and documents."
+    },
+    {
+      "question": "Which project objective addresses loss or surplus of inventory items?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-9a14870cb409cf30c65d"],
+      "section_page_targets": [{"section_path": ["1.5 PROJECT OBJECTIVES"], "pages": [11]}]
+    },
+    {
+      "question": "What information should be captured for each public engagement activity?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-ec90ed2f28d89925b03f"],
+      "section_page_targets": [{"section_path": ["1.6 PUBLIC ENGAGEMENT SUMMARY (WHERE APPPLICABLE)"], "pages": [11]}],
+      "notes": "Table header evidence: activity type, dates, stakeholder group, feedback, priority and solution."
+    },
+    {
+      "question": "How should fragile old paper documents be handled during scanning?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-a942c89081cdaefe8a36"],
+      "section_page_targets": [{"pages": [13]}],
+      "notes": "Risk table recommends flatbed scanning and a historical cut-off."
+    },
+    {
+      "question": "Will implementation use a parallel run or a direct migration approach?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-934549b6897897daf5dc"],
+      "section_page_targets": [{"pages": [14]}],
+      "notes": "Assumptions prose states direct migration and no parallel run."
+    },
+    {
+      "question": "Who approves and controls daily inventory record updates?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-11d91ea84da95f99ec74"],
+      "section_page_targets": [{"section_path": ["e.g. A sample of System User Profile for the project is shown below:"], "pages": [16]}],
+      "notes": "System user profile table identifies the Inventory Control Officer."
+    },
+    {
+      "question": "What business process ID covers trade-in of inventory?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-455764a2f13de86d4410"],
+      "section_page_targets": [{"section_path": ["4.1 LIST OF FUTURE BUSINESS PROCESS"], "pages": [17]}]
+    },
+    {
+      "question": "Who must approve a new inventory record when the invoice is at least HK$1 million?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-edb1b695fe802504c431"],
+      "section_page_targets": [{"section_path": ["5.1 LIST OF FUNCTIONAL REQUIREMENTS"], "pages": [24]}],
+      "notes": "Functional requirement list maps REQ-CRE-003 to Inventory Control Manager."
+    },
+    {
+      "question": "What fields are mandatory when creating a draft inventory item record?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-c25b048c0d144cd0c051"],
+      "section_page_targets": [{"section_path": ["5.2 REQ-CRE-000 CREATION OF NEW INVENTORY RECORD"], "pages": [25]}]
+    },
+    {
+      "question": "Why must an invoice be linked to each individual inventory item instead of the whole record?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-9c72646aace7b534f7a0"],
+      "section_page_targets": [{"section_path": ["5.2 REQ-CRE-000 CREATION OF NEW INVENTORY RECORD"], "pages": [26]}],
+      "notes": "Harder paraphrase of transfer, retrieval and maintenance rationale."
+    },
+    {
+      "question": "What audit information must be retained before and after an inventory transaction changes?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-3acc6e004957be93bc39"],
+      "section_page_targets": [{"section_path": ["6.2 AUDIT, CONTROL & SECURITY REQUIREMENTS", "6.2.1 REQ-ACS1 SYSTEM AUDIT"], "pages": [29]}]
+    },
+    {
+      "question": "How should the system prevent users from opening functions they are not authorized to access?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-a3a1a2ffb068d0e6feeb"],
+      "section_page_targets": [{"section_path": ["6.2 AUDIT, CONTROL & SECURITY REQUIREMENTS", "6.2.2 REQ-ACS2 SYSTEM CONTROL"], "pages": [30]}]
+    },
+    {
+      "question": "When are backups performed and what is the maximum recovery time after system failure?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-df2c99fdf48b20d59fe2"],
+      "section_page_targets": [{"section_path": ["6.2 AUDIT, CONTROL & SECURITY REQUIREMENTS", "6.2.4 REQ-ACS4 BACKUP AND RECOVERY REQUIREMENTS"], "pages": [31]}]
+    },
+    {
+      "question": "What minimum processing capacity must the disaster recovery site provide?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-df82e1e31f07fcf30994"],
+      "section_page_targets": [{"section_path": ["6.2 AUDIT, CONTROL & SECURITY REQUIREMENTS", "6.2.5 REQ-ACS5 DISASTER RECOVERY REQUIREMENTS"], "pages": [32]}]
+    },
+    {
+      "question": "Which Chinese character form is required, and what symbols must passwords accept?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-320dded4a870688eb625"],
+      "section_page_targets": [{"section_path": ["6.4 DATA REQUIREMENTS", "6.4.1 REQ - DAR1 GLOBAL DATA REQUIREMENTS"], "pages": [34]}],
+      "notes": "Harder compound question whose answers share one data-requirements table."
+    },
+    {
+      "question": "During which hours must the system achieve 99.5 percent availability?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-f79f9463206b8219fd89"],
+      "section_page_targets": [{"section_path": ["6.6 SERVICE LEVEL TARGETS", "6.6.1 REQ-SLT1 SYSTEM AVAILABILITY"], "pages": [38]}]
+    },
+    {
+      "question": "What response-time targets apply to data enquiries and inventory transaction reports?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-5c875cb2f0e89bb7eb5b"],
+      "section_page_targets": [{"section_path": ["6.6 SERVICE LEVEL TARGETS", "6.6.2 REQ-SLT2 SYSTEM PERFORMANCE"], "pages": [39]}]
+    },
+    {
+      "question": "What annual data growth rate is expected, and when are disposed inventory records removed?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-c1a3cd861067f1049fee"],
+      "section_page_targets": [{"section_path": ["6.7 DATA GROWTH AND RETENTION REQUIREMENTS", "6.7.1 REQ-DGR1 DATA GROWTH AND RETENTION REQUIREMENTS"], "pages": [40]}]
+    },
+    {
+      "question": "What must be prepared before the big-bang rollout if no system migration is needed?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "relevant_chunk_ids": ["chunk-e9ff5148673180dfffba"],
+      "section_page_targets": [{"pages": [42]}],
+      "notes": "Harder implementation question: code tables, item codes and user profiles must be pre-loaded."
+    }
+  ]
+}
