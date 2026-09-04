@@ -19,6 +19,26 @@ class Settings(BaseSettings):
     )
     max_upload_size_bytes: int = Field(default=25 * 1024 * 1024, alias="MAX_UPLOAD_SIZE_BYTES")
     source_storage_dir: Path = Field(default=Path("data/source_files"), alias="SOURCE_STORAGE_DIR")
+    embedding_model_name: str = Field(
+        default="Alibaba-NLP/gte-modernbert-base",
+        alias="EMBEDDING_MODEL_NAME",
+    )
+    embedding_model_revision: str = Field(
+        default="e7f32e3c00f91d699e8c43b53106206bcc72bb22",
+        alias="EMBEDDING_MODEL_REVISION",
+    )
+    embedding_dimension: int = Field(default=768, alias="EMBEDDING_DIMENSION", gt=0)
+    embedding_max_sequence_length: int = Field(
+        default=8192,
+        alias="EMBEDDING_MAX_SEQUENCE_LENGTH",
+        gt=0,
+    )
+    embedding_batch_size: int = Field(default=16, alias="EMBEDDING_BATCH_SIZE", gt=0)
+    embedding_device: str = Field(default="cpu", alias="EMBEDDING_DEVICE")
+    embedding_preprocessing_version: str = Field(
+        default="1",
+        alias="EMBEDDING_PREPROCESSING_VERSION",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

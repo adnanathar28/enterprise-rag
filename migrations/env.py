@@ -7,7 +7,13 @@ from sqlalchemy import engine_from_config, pool
 
 from brd_knowledge.core.config import get_settings
 from brd_knowledge.database.base import Base
-from brd_knowledge.database.models import Document, ExtractionRun, Requirement, Section
+from brd_knowledge.database.models import (
+    ChunkEmbedding,
+    Document,
+    ExtractionRun,
+    Requirement,
+    Section,
+)
 
 config = context.config
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
@@ -51,4 +57,4 @@ else:
     run_migrations_online()
 
 
-_models = (Document, ExtractionRun, Requirement, Section)
+_models = (ChunkEmbedding, Document, ExtractionRun, Requirement, Section)
