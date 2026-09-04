@@ -67,6 +67,12 @@ class GteModernBertEmbeddingProvider:
         return self._configuration
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._embed(texts, input_kind="Document")
+
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        return self._embed(texts, input_kind="Query")
+
+    def _embed(self, texts: list[str], *, input_kind: str) -> list[list[float]]:
         if not texts:
             return []
         self._ensure_loaded()
@@ -81,7 +87,7 @@ class GteModernBertEmbeddingProvider:
             )
             if token_count > self.configuration.max_sequence_length:
                 raise EmbeddingTokenLimitError(
-                    f"Document text at index {index} has {token_count} tokens; "
+                    f"{input_kind} text at index {index} has {token_count} tokens; "
                     f"maximum is {self.configuration.max_sequence_length}."
                 )
 

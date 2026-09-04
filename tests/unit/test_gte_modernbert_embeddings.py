@@ -58,6 +58,16 @@ def test_rejects_over_limit_input_without_silent_truncation() -> None:
     assert provider.batches == []
 
 
+def test_query_embedding_uses_same_batching_without_a_prefix() -> None:
+    provider = RecordingProvider(batch_size=2)
+
+    vectors = provider.embed_queries(["2", "3"])
+
+    assert provider.batches == [["2", "3"]]
+    assert len(vectors) == 2
+    assert provider.configuration.query_prefix == ""
+
+
 def test_embedding_configuration_hash_changes_with_preprocessing() -> None:
     first = RecordingProvider(preprocessing_version="1")
     changed = RecordingProvider(preprocessing_version="2")

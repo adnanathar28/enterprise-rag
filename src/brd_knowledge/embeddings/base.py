@@ -35,3 +35,6 @@ class EmbeddingProvider(Protocol):
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed document texts in input order."""
+
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        """Embed query texts in input order."""
