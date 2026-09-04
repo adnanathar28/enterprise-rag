@@ -3,6 +3,8 @@ from pathlib import Path
 from types import ModuleType
 
 from brd_knowledge.schemas.evaluation import (
+    QueryStrategyComparison,
+    RetrievalComparisonReport,
     RetrievalEvaluationReport,
     RetrievalExampleResult,
     RetrievalMetrics,
@@ -21,7 +23,7 @@ def load_script() -> ModuleType:
 
 
 def test_report_highlights_failures_and_records_retrieved_evidence() -> None:
-    report = RetrievalEvaluationReport(
+    strategy_report = RetrievalEvaluationReport(
         dataset_name="sample",
         metrics=RetrievalMetrics(
             example_count=1,
@@ -44,7 +46,8 @@ def test_report_highlights_failures_and_records_retrieved_evidence() -> None:
                         section_path=["Wrong section"],
                         page_start=4,
                         page_end=4,
-                        similarity=0.5,
+                        score=0.5,
+                        strategy="dense",
                         relevant=False,
                     )
                 ],
@@ -55,13 +58,28 @@ def test_report_highlights_failures_and_records_retrieved_evidence() -> None:
             )
         ],
     )
+    report = RetrievalComparisonReport(
+        dense=strategy_report,
+        lexical=strategy_report.model_copy(deep=True),
+        hybrid=strategy_report.model_copy(deep=True),
+        per_question=[
+            QueryStrategyComparison(
+                question="Where is the evidence?",
+                dense_first_relevant_rank=None,
+                lexical_first_relevant_rank=None,
+                hybrid_first_relevant_rank=None,
+            )
+        ],
+        recovered_dense_failures=[],
+        dense_success_regressions=[],
+    )
 
     output = load_script().render_report(report)
 
-    assert "Recall@5 0.000" in output
-    assert "[1] FAIL first_relevant_rank=NONE" in output
-    assert "expected=expected" in output
-    assert "chunk=wrong pages=4-4 section=Wrong section" in output
+    assert "dense             0.000     0.000     0.000  0.000" in output
+    assert "[1] dense=NONE lexical=NONE hybrid=NONE" in output
+    assert "RECOVERED DENSE TOP-5 FAILURES\n- NONE" in output
+    assert "DENSE TOP-5 SUCCESSES REGRESSED BY HYBRID\n- NONE" in output
 
 
 def test_real_dataset_loads_with_twenty_labeled_examples() -> None:

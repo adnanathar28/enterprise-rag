@@ -7,9 +7,14 @@ from pathlib import Path
 from brd_knowledge.core.config import get_settings
 from brd_knowledge.database.session import SessionLocal
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
-from brd_knowledge.evaluation import RetrievalEvaluator
-from brd_knowledge.retrieval import PgVectorRetriever
-from brd_knowledge.schemas.evaluation import RetrievalEvalDataset, RetrievalEvaluationReport
+from brd_knowledge.evaluation import RetrievalComparisonEvaluator
+from brd_knowledge.retrieval import (
+    DenseExperimentRetriever,
+    HybridRrfRetriever,
+    PgVectorRetriever,
+    PostgresLexicalRetriever,
+)
+from brd_knowledge.schemas.evaluation import RetrievalComparisonReport, RetrievalEvalDataset
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,36 +30,41 @@ def load_dataset(path: Path) -> RetrievalEvalDataset:
     return RetrievalEvalDataset.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def render_report(report: RetrievalEvaluationReport) -> str:
-    metrics = report.metrics
+def render_report(report: RetrievalComparisonReport) -> str:
+    dataset_name = report.dense.dataset_name
     lines = [
-        f"DATASET {report.dataset_name}",
-        f"QUESTIONS {metrics.example_count}",
-        f"Recall@1 {metrics.recall_at_1:.3f}",
-        f"Recall@3 {metrics.recall_at_3:.3f}",
-        f"Recall@5 {metrics.recall_at_5:.3f}",
-        f"MRR {metrics.mrr:.3f}",
+        f"DATASET {dataset_name}",
+        f"QUESTIONS {report.dense.metrics.example_count}",
         "",
+        "STRATEGY       Recall@1  Recall@3  Recall@5  MRR",
     ]
-    for index, result in enumerate(report.results, 1):
-        status = "PASS" if result.hit_at_5 else "FAIL"
-        expected = ", ".join(result.relevant_chunk_ids) or "section/page target"
-        lines.extend(
-            [
-                f"[{index}] {status} first_relevant_rank={result.first_relevant_rank or 'NONE'}",
-                f"    question={result.question}",
-                f"    expected={expected}",
-            ]
+    for name, strategy_report in (
+        ("dense", report.dense),
+        ("lexical", report.lexical),
+        ("hybrid_rrf", report.hybrid),
+    ):
+        metrics = strategy_report.metrics
+        lines.append(
+            f"{name:<14} {metrics.recall_at_1:>8.3f}  {metrics.recall_at_3:>8.3f}  "
+            f"{metrics.recall_at_5:>8.3f}  {metrics.mrr:>5.3f}"
         )
-        for item in result.retrieved:
-            marker = "RELEVANT" if item.relevant else "-"
-            section = " > ".join(item.section_path) or "NONE"
-            lines.append(
-                f"    rank={item.rank} {marker} score={item.similarity:.6f} "
-                f"chunk={item.chunk_id} pages={item.page_start}-{item.page_end} "
-                f"section={section}"
-            )
-        lines.append("")
+    lines.extend(["", "PER-QUESTION FIRST RELEVANT RANK"])
+    for index, item in enumerate(report.per_question, 1):
+        dense_rank = item.dense_first_relevant_rank or "NONE"
+        lexical_rank = item.lexical_first_relevant_rank or "NONE"
+        hybrid_rank = item.hybrid_first_relevant_rank or "NONE"
+        lines.append(
+            f"[{index}] dense={dense_rank} lexical={lexical_rank} hybrid={hybrid_rank} "
+            f"question={item.question}"
+        )
+    lines.extend(["", "RECOVERED DENSE TOP-5 FAILURES"])
+    lines.extend(f"- {question}" for question in report.recovered_dense_failures)
+    if not report.recovered_dense_failures:
+        lines.append("- NONE")
+    lines.extend(["", "DENSE TOP-5 SUCCESSES REGRESSED BY HYBRID"])
+    lines.extend(f"- {question}" for question in report.dense_success_regressions)
+    if not report.dense_success_regressions:
+        lines.append("- NONE")
     return "\n".join(lines)
 
 
@@ -72,7 +82,10 @@ def main() -> None:
         preprocessing_version=settings.embedding_preprocessing_version,
     )
     with SessionLocal() as session:
-        report = RetrievalEvaluator(PgVectorRetriever(session, provider)).evaluate(dataset)
+        dense = DenseExperimentRetriever(PgVectorRetriever(session, provider))
+        lexical = PostgresLexicalRetriever(session)
+        hybrid = HybridRrfRetriever(dense, lexical)
+        report = RetrievalComparisonEvaluator(dense, lexical, hybrid).evaluate(dataset)
     print(render_report(report))
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)

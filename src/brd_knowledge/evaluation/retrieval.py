@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Protocol
 
 from brd_knowledge.schemas.evaluation import (
+    QueryStrategyComparison,
+    RetrievalComparisonReport,
     RetrievalEvalDataset,
     RetrievalEvalExample,
     RetrievalEvaluationReport,
@@ -10,7 +12,7 @@ from brd_knowledge.schemas.evaluation import (
     RetrievalMetrics,
     RetrievedEvidence,
 )
-from brd_knowledge.schemas.retrieval import RetrievedChunk
+from brd_knowledge.schemas.experimental_retrieval import ExperimentalRetrievedChunk
 
 
 class ChunkRetriever(Protocol):
@@ -20,7 +22,7 @@ class ChunkRetriever(Protocol):
         *,
         top_k: int = 5,
         document_id: str | None = None,
-    ) -> list[RetrievedChunk]: ...
+    ) -> list[ExperimentalRetrievedChunk]: ...
 
 
 class RetrievalEvaluator:
@@ -61,7 +63,8 @@ class RetrievalEvaluator:
                 section_path=chunk.section_path,
                 page_start=chunk.page_start,
                 page_end=chunk.page_end,
-                similarity=chunk.similarity,
+                score=chunk.score,
+                strategy=chunk.strategy,
                 relevant=self._is_relevant(example, chunk),
             )
             for chunk in retrieved_chunks
@@ -82,7 +85,10 @@ class RetrievalEvaluator:
         )
 
     @staticmethod
-    def _is_relevant(example: RetrievalEvalExample, chunk: RetrievedChunk) -> bool:
+    def _is_relevant(
+        example: RetrievalEvalExample,
+        chunk: ExperimentalRetrievedChunk,
+    ) -> bool:
         if chunk.document_id != example.expected_document_id:
             return False
         if example.relevant_chunk_ids:
@@ -94,4 +100,63 @@ class RetrievalEvaluator:
                 or any(chunk.page_start <= page <= chunk.page_end for page in target.pages)
             )
             for target in example.section_page_targets
+        )
+
+
+class RetrievalComparisonEvaluator:
+    def __init__(
+        self,
+        dense: ChunkRetriever,
+        lexical: ChunkRetriever,
+        hybrid: ChunkRetriever,
+    ) -> None:
+        self._dense = dense
+        self._lexical = lexical
+        self._hybrid = hybrid
+
+    def evaluate(self, dataset: RetrievalEvalDataset) -> RetrievalComparisonReport:
+        dense = RetrievalEvaluator(self._dense).evaluate(dataset)
+        lexical = RetrievalEvaluator(self._lexical).evaluate(dataset)
+        hybrid = RetrievalEvaluator(self._hybrid).evaluate(dataset)
+        per_question = [
+            QueryStrategyComparison(
+                question=dense_result.question,
+                dense_first_relevant_rank=dense_result.first_relevant_rank,
+                lexical_first_relevant_rank=lexical_result.first_relevant_rank,
+                hybrid_first_relevant_rank=hybrid_result.first_relevant_rank,
+            )
+            for dense_result, lexical_result, hybrid_result in zip(
+                dense.results,
+                lexical.results,
+                hybrid.results,
+                strict=True,
+            )
+        ]
+        recovered = [
+            item.question
+            for item, dense_result, hybrid_result in zip(
+                per_question,
+                dense.results,
+                hybrid.results,
+                strict=True,
+            )
+            if not dense_result.hit_at_5 and hybrid_result.hit_at_5
+        ]
+        regressions = [
+            item.question
+            for item, dense_result, hybrid_result in zip(
+                per_question,
+                dense.results,
+                hybrid.results,
+                strict=True,
+            )
+            if dense_result.hit_at_5 and not hybrid_result.hit_at_5
+        ]
+        return RetrievalComparisonReport(
+            dense=dense,
+            lexical=lexical,
+            hybrid=hybrid,
+            per_question=per_question,
+            recovered_dense_failures=recovered,
+            dense_success_regressions=regressions,
         )

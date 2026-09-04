@@ -1,3 +1,3 @@
-from brd_knowledge.evaluation.retrieval import RetrievalEvaluator
+from brd_knowledge.evaluation.retrieval import RetrievalComparisonEvaluator, RetrievalEvaluator
 
-__all__ = ["RetrievalEvaluator"]
+__all__ = ["RetrievalComparisonEvaluator", "RetrievalEvaluator"]

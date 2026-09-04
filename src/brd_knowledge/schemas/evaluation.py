@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, model_validator
 
+from brd_knowledge.schemas.experimental_retrieval import ExperimentalStrategy
+
 
 class SectionPageTarget(BaseModel):
     section_path: list[str] = Field(default_factory=list)
@@ -40,7 +42,8 @@ class RetrievedEvidence(BaseModel):
     section_path: list[str] = Field(default_factory=list)
     page_start: int = Field(ge=1)
     page_end: int = Field(ge=1)
-    similarity: float
+    score: float
+    strategy: ExperimentalStrategy
     relevant: bool
 
 
@@ -69,3 +72,19 @@ class RetrievalEvaluationReport(BaseModel):
     dataset_name: str
     metrics: RetrievalMetrics
     results: list[RetrievalExampleResult]
+
+
+class QueryStrategyComparison(BaseModel):
+    question: str
+    dense_first_relevant_rank: int | None
+    lexical_first_relevant_rank: int | None
+    hybrid_first_relevant_rank: int | None
+
+
+class RetrievalComparisonReport(BaseModel):
+    dense: RetrievalEvaluationReport
+    lexical: RetrievalEvaluationReport
+    hybrid: RetrievalEvaluationReport
+    per_question: list[QueryStrategyComparison]
+    recovered_dense_failures: list[str]
+    dense_success_regressions: list[str]

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from brd_knowledge.evaluation import RetrievalEvaluator
+from brd_knowledge.evaluation import RetrievalComparisonEvaluator, RetrievalEvaluator
 from brd_knowledge.schemas.evaluation import RetrievalEvalDataset, RetrievalEvalExample
-from brd_knowledge.schemas.retrieval import RetrievedChunk
+from brd_knowledge.schemas.experimental_retrieval import ExperimentalRetrievedChunk
 
 
-def result(chunk_id: str, rank: int, *, page: int = 1) -> RetrievedChunk:
-    return RetrievedChunk(
+def result(chunk_id: str, rank: int, *, page: int = 1) -> ExperimentalRetrievedChunk:
+    return ExperimentalRetrievedChunk(
         rank=rank,
-        cosine_distance=rank / 10,
-        similarity=1 - rank / 10,
+        score=1 - rank / 10,
+        strategy="dense",
         chunk_id=chunk_id,
         document_id="doc-1",
         section_path=["Requirements"],
@@ -21,7 +21,7 @@ def result(chunk_id: str, rank: int, *, page: int = 1) -> RetrievedChunk:
 
 
 class FakeRetriever:
-    def __init__(self, results: dict[str, list[RetrievedChunk]]) -> None:
+    def __init__(self, results: dict[str, list[ExperimentalRetrievedChunk]]) -> None:
         self.results = results
         self.calls: list[tuple[str, int, str | None]] = []
 
@@ -31,7 +31,7 @@ class FakeRetriever:
         *,
         top_k: int = 5,
         document_id: str | None = None,
-    ) -> list[RetrievedChunk]:
+    ) -> list[ExperimentalRetrievedChunk]:
         self.calls.append((query, top_k, document_id))
         return self.results[query]
 
@@ -113,3 +113,35 @@ def test_evaluation_output_is_deterministic() -> None:
 
     assert first.model_dump(mode="json") == second.model_dump(mode="json")
     assert [item.question for item in first.results] == ["first", "second"]
+
+
+def test_comparison_records_recoveries_and_regressions() -> None:
+    dataset = RetrievalEvalDataset(
+        name="comparison",
+        examples=[example("recovered", ["a"]), example("regressed", ["b"])],
+    )
+    dense = FakeRetriever(
+        {
+            "recovered": [result("x", 1)],
+            "regressed": [result("b", 1)],
+        }
+    )
+    lexical = FakeRetriever(
+        {
+            "recovered": [result("a", 1)],
+            "regressed": [result("x", 1)],
+        }
+    )
+    hybrid = FakeRetriever(
+        {
+            "recovered": [result("a", 1)],
+            "regressed": [result("x", 1)],
+        }
+    )
+
+    report = RetrievalComparisonEvaluator(dense, lexical, hybrid).evaluate(dataset)
+
+    assert report.recovered_dense_failures == ["recovered"]
+    assert report.dense_success_regressions == ["regressed"]
+    assert report.per_question[0].dense_first_relevant_rank is None
+    assert report.per_question[0].hybrid_first_relevant_rank == 1
