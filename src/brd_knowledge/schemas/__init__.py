@@ -1,4 +1,10 @@
 from brd_knowledge.schemas.chunk import Chunk, ChunkContentType
+from brd_knowledge.schemas.context import (
+    ConstructedContext,
+    ContextBuildRequest,
+    ContextEvidence,
+    ContextExclusion,
+)
 from brd_knowledge.schemas.document import (
     DocumentBlock,
     DocumentMetadata,
@@ -24,6 +30,10 @@ __all__ = [
     "BoundingBox",
     "Chunk",
     "ChunkContentType",
+    "ConstructedContext",
+    "ContextBuildRequest",
+    "ContextEvidence",
+    "ContextExclusion",
     "DocumentBlock",
     "DocumentMetadata",
     "DocumentSection",
