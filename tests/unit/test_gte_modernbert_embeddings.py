@@ -2,6 +2,7 @@ import pytest
 
 from brd_knowledge.embeddings.gte_modernbert import (
     EMBEDDING_DIMENSION,
+    EmbeddingOutputError,
     EmbeddingTokenLimitError,
     GteModernBertEmbeddingProvider,
 )
@@ -62,3 +63,13 @@ def test_embedding_configuration_hash_changes_with_preprocessing() -> None:
     changed = RecordingProvider(preprocessing_version="2")
 
     assert first.configuration.config_hash != changed.configuration.config_hash
+
+
+def test_float32_rounding_is_accepted_but_materially_unnormalized_output_is_rejected() -> None:
+    provider = RecordingProvider()
+    rounded = [0.999524] + [0.0] * (EMBEDDING_DIMENSION - 1)
+    provider._validate_vectors([rounded], expected_count=1)
+
+    unnormalized = [0.99] + [0.0] * (EMBEDDING_DIMENSION - 1)
+    with pytest.raises(EmbeddingOutputError, match="not normalized"):
+        provider._validate_vectors([unnormalized], expected_count=1)

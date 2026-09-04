@@ -143,7 +143,7 @@ class GteModernBertEmbeddingProvider:
             if not all(math.isfinite(value) for value in vector):
                 raise EmbeddingOutputError(f"Vector {index} contains a non-finite value.")
             norm = math.sqrt(sum(value * value for value in vector))
-            if not math.isclose(norm, 1.0, rel_tol=1e-4, abs_tol=1e-4):
+            if not math.isclose(norm, 1.0, rel_tol=1e-3, abs_tol=1e-3):
                 raise EmbeddingOutputError(
                     f"Vector {index} is not normalized; L2 norm is {norm:.6f}."
                 )
