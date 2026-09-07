@@ -53,7 +53,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 ## Database
 
-Start PostgreSQL:
+Start PostgreSQL (Docker exposes port 5433 on localhost; the container uses 5432):
 
 ```powershell
 docker compose up -d
@@ -241,3 +241,7 @@ References:
 Local validation on this workspace: a synthetic evidence question completed through
 Qwen and the grounding service with a valid resolved citation. Preflight and
 Ollama both counted 224 input tokens; output was 41 tokens.
+
+The Docker database uses `localhost:5433` to avoid conflicting with PostgreSQL
+running directly on the Mac at port 5432. Set `DATABASE_URL` using `.env.example`;
+Compose retains the existing `postgres_data` volume when recreating the container.
