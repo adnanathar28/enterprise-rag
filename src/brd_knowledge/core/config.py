@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,6 +40,12 @@ class Settings(BaseSettings):
         default="1",
         alias="EMBEDDING_PREPROCESSING_VERSION",
     )
+
+    llm_provider: Literal["gemini", "local_qwen"] = Field(default="gemini", alias="LLM_PROVIDER")
+    local_qwen_model: str = Field(default="qwen3:8b", alias="LOCAL_QWEN_MODEL")
+    local_qwen_base_url: str = Field(default="http://127.0.0.1:11434", alias="LOCAL_QWEN_BASE_URL")
+    local_qwen_context_tokens: int = Field(default=8192, alias="LOCAL_QWEN_CONTEXT_TOKENS")
+    local_qwen_timeout_seconds: float = Field(default=180, alias="LOCAL_QWEN_TIMEOUT_SECONDS")
 
     gemini_api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_MODEL")

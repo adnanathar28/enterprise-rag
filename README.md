@@ -154,3 +154,90 @@ Official references (checked 2026-09-07):
 - [Gemini 3 temperature guidance](https://ai.google.dev/gemini-api/docs/gemini-3)
 - [Thinking controls](https://ai.google.dev/gemini-api/docs/generate-content/thinking)
 - [Official Python SDK](https://googleapis.github.io/python-genai/)
+
+## Local Qwen development option
+
+Use `--provider local_qwen --model qwen3:8b` to run the same retrieval/context/
+grounding pipeline locally through Ollama. Gemini is retained; `--provider gemini`
+selects it explicitly. Without the flag, `LLM_PROVIDER` selects the provider and
+its default remains `gemini`. Set `LLM_PROVIDER=local_qwen` in your ignored `.env`
+to make repeated development runs local. There is no automatic provider fallback.
+The local path requires no Gemini key.
+
+The supported local profile is Qwen3 8B Q4_K_M, in non-thinking mode. On the inspected
+M4 Mac with 16 GB RAM, Ollama 0.32.15 and `qwen3:8b` were already installed. Start
+with 8,192 context tokens, 1,024 maximum output tokens, and a 180-second timeout.
+Actual speed depends on prompt length, model loading, and memory pressure. The
+local configuration accepts context windows from 2,048 through 40,960, but a larger
+window uses more memory. Model overrides are restricted to supported profiles;
+an arbitrary Ollama model must not silently use Qwen's tokenizer.
+
+If needed on a new machine, install Ollama and download the local model:
+
+```sh
+ollama pull qwen3:8b
+# Only if the Ollama app/server is not already running:
+ollama serve
+```
+
+Download only the matching tokenizer and model configuration once (no second copy
+of the model weights). From the repository root:
+
+```sh
+.venv/bin/python - <<'PY'
+from huggingface_hub import snapshot_download
+snapshot_download(
+    'Qwen/Qwen3-8B',
+    revision='b968826d9c46dd6066d109eabc6255188de91218',
+    allow_patterns=['tokenizer.json', 'tokenizer_config.json', 'config.json'],
+    cache_dir='data/outputs/tokenizer_cache',
+)
+PY
+```
+
+These public files are cached in ignored outputs. At query time, tokenizer loading
+is offline with remote code disabled. The adapter renders the official Qwen chat
+template with `enable_thinking=False`, counts that exact prompt, and sends it to
+Ollama `/api/generate` with `raw=true`. This avoids a second hidden chat template.
+The response schema is supplied as a decoding grammar through `format`, rather
+than inserted into the prompt. Existing grounding instructions and evidence are
+unchanged. Ollama's returned prompt count must equal preflight; a discrepancy is
+a typed failure, not an accepted potentially truncated answer.
+
+```sh
+.venv/bin/python scripts/answer_question.py \
+  "Approximately how many orders, trips, and delivery stops does IDS handle each day?" \
+  --document-id 'IDS_BRD_V2_140526 (2).pdf' \
+  --provider local_qwen --model qwen3:8b \
+  --top-k 5 --max-characters 20000 --max-output-tokens 1024
+```
+
+As with Gemini, the document must already have embeddings in PostgreSQL. Context
+packing remains character-based; token preflight rejects overflow without changing
+retrieval or trimming evidence. Set `LOCAL_QWEN_CONTEXT_TOKENS=16384` only if measured
+requests need it and memory permits. Lowering `--max-characters` is an explicit
+change to the evidence budget and affects comparison with Gemini.
+
+Local generation uses Qwen's recommended non-thinking sampling (temperature 0.7,
+top-p 0.8, top-k 20, min-p 0), seed 42, no streaming, and no retries. A fixed seed
+helps repeatability but does not guarantee identical answers across runtime/model
+versions. The model's installed digest is recorded in `model_version`; no request
+ID is invented. The endpoint is restricted to loopback HTTP, environment proxies
+and redirects are disabled, and the adapter never pulls models or contacts Gemini.
+Ollama keeps the model loaded for five minutes between requests.
+
+Structured output does not establish factual support. The existing Pydantic and
+citation validation still run, and malformed/incomplete answers are errors. Use
+local Qwen to exercise integration; use Gemini to assess Gemini's answer quality.
+Normal automated tests mock both the tokenizer and HTTP transport and need neither
+Ollama nor downloaded tokenizer files.
+
+References:
+
+- [Qwen3 non-thinking mode and sampling](https://huggingface.co/Qwen/Qwen3-8B)
+- [Ollama raw generation and usage](https://docs.ollama.com/api/generate)
+- [Ollama schema-constrained output](https://docs.ollama.com/capabilities/structured-outputs)
+
+Local validation on this workspace: a synthetic evidence question completed through
+Qwen and the grounding service with a valid resolved citation. Preflight and
+Ollama both counted 224 input tokens; output was 41 tokens.

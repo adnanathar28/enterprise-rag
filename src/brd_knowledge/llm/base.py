@@ -35,6 +35,10 @@ class LLMGenerationResponse(BaseModel):
 
 
 class LLMProvider(ABC):
+    def close(self) -> None:
+        """Release provider resources when present."""
+        return None
+
     @property
     @abstractmethod
     def configuration(self) -> LLMConfiguration:
