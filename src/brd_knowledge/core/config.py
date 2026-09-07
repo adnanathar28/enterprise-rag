@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -39,6 +39,12 @@ class Settings(BaseSettings):
         default="1",
         alias="EMBEDDING_PREPROCESSING_VERSION",
     )
+
+    gemini_api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-3.1-flash-lite", alias="GEMINI_MODEL")
+    gemini_temperature: float = Field(default=1.0, ge=0, le=2, alias="GEMINI_TEMPERATURE")
+    gemini_timeout_seconds: float = Field(default=60.0, gt=0, alias="GEMINI_TIMEOUT_SECONDS")
+    gemini_safety_margin_tokens: int = Field(default=128, ge=0, alias="GEMINI_SAFETY_MARGIN_TOKENS")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
