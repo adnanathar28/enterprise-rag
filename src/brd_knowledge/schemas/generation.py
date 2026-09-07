@@ -54,6 +54,8 @@ class GenerationMetadata(BaseModel):
     prompt_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
     provider_request_id: str | None = None
+    model_version: str | None = None
+    thinking_tokens: int | None = Field(default=None, ge=0)
 
 
 class GroundedAnswer(BaseModel):

@@ -11,6 +11,7 @@ class LLMConfiguration(BaseModel):
     model: str = Field(min_length=1)
     revision: str | None = None
     context_window_tokens: int = Field(gt=0)
+    max_output_tokens: int | None = Field(default=None, gt=0)
     temperature: float = 0.0
     structured_output: bool = True
     timeout_seconds: float = Field(default=60.0, gt=0)
@@ -29,6 +30,8 @@ class LLMGenerationResponse(BaseModel):
     prompt_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
     request_id: str | None = None
+    model_version: str | None = None
+    thinking_tokens: int | None = Field(default=None, ge=0)
 
 
 class LLMProvider(ABC):
@@ -38,8 +41,8 @@ class LLMProvider(ABC):
         """Return the pinned provider and model configuration."""
 
     @abstractmethod
-    def count_tokens(self, system_prompt: str, user_prompt: str) -> int:
-        """Count input tokens using the model's tokenizer."""
+    def count_tokens(self, request: LLMGenerationRequest) -> int:
+        """Count the complete structured request using provider-supported token counting."""
 
     @abstractmethod
     def generate_structured(self, request: LLMGenerationRequest) -> LLMGenerationResponse:

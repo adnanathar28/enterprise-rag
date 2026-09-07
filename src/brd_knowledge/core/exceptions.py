@@ -24,3 +24,11 @@ class GenerationProviderError(GenerationError):
 
 class PromptBudgetExceeded(GenerationError):
     """Raised before generation when the complete request exceeds the model window."""
+
+
+class GenerationBlockedError(GenerationProviderError):
+    """Raised when the provider blocks or refuses generation."""
+
+
+class IncompleteGenerationError(GenerationProviderError):
+    """Raised when generation stops before a complete answer is available."""

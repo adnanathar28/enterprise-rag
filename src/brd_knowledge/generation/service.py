@@ -1,6 +1,7 @@
 from pydantic import ValidationError
 
 from brd_knowledge.core.exceptions import (
+    GenerationError,
     GenerationProviderError,
     MalformedGenerationResponse,
     PromptBudgetExceeded,
@@ -33,8 +34,19 @@ class GroundedAnswerService:
             )
 
         user_prompt = build_user_prompt(request.question, request.context)
-        prompt_tokens = self._count_tokens(SYSTEM_PROMPT, user_prompt)
         configuration = self._provider.configuration
+        if (
+            configuration.max_output_tokens is not None
+            and request.max_output_tokens > configuration.max_output_tokens
+        ):
+            raise PromptBudgetExceeded("Requested output exceeds the model output limit.")
+        provider_request = LLMGenerationRequest(
+            system_prompt=SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            max_output_tokens=request.max_output_tokens,
+            response_schema=ModelAnswerPayload.model_json_schema(),
+        )
+        prompt_tokens = self._count_tokens(provider_request)
         required_tokens = (
             prompt_tokens
             + request.max_output_tokens
@@ -46,14 +58,10 @@ class GroundedAnswerService:
                 f"margin; model limit is {configuration.context_window_tokens}."
             )
 
-        provider_request = LLMGenerationRequest(
-            system_prompt=SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            max_output_tokens=request.max_output_tokens,
-            response_schema=ModelAnswerPayload.model_json_schema(),
-        )
         try:
             response = self._provider.generate_structured(provider_request)
+        except GenerationError:
+            raise
         except Exception as exc:
             raise GenerationProviderError("The LLM provider call failed.") from exc
 
@@ -79,12 +87,16 @@ class GroundedAnswerService:
                 ),
                 output_tokens=response.output_tokens,
                 provider_request_id=response.request_id,
+                model_version=response.model_version,
+                thinking_tokens=response.thinking_tokens,
             ),
         )
 
-    def _count_tokens(self, system_prompt: str, user_prompt: str) -> int:
+    def _count_tokens(self, request: LLMGenerationRequest) -> int:
         try:
-            count = self._provider.count_tokens(system_prompt, user_prompt)
+            count = self._provider.count_tokens(request)
+        except GenerationError:
+            raise
         except Exception as exc:
             raise GenerationProviderError(
                 "The LLM provider could not count prompt tokens."
@@ -100,6 +112,8 @@ class GroundedAnswerService:
         prompt_tokens: int | None = None,
         output_tokens: int | None = None,
         provider_request_id: str | None = None,
+        model_version: str | None = None,
+        thinking_tokens: int | None = None,
     ) -> GenerationMetadata:
         configuration = self._provider.configuration
         return GenerationMetadata(
@@ -110,4 +124,6 @@ class GroundedAnswerService:
             prompt_tokens=prompt_tokens,
             output_tokens=output_tokens,
             provider_request_id=provider_request_id,
+            model_version=model_version,
+            thinking_tokens=thinking_tokens,
         )

@@ -15,7 +15,7 @@ class NoopLLMProvider(LLMProvider):
             context_window_tokens=1,
         )
 
-    def count_tokens(self, system_prompt: str, user_prompt: str) -> int:
+    def count_tokens(self, request: LLMGenerationRequest) -> int:
         raise NotImplementedError("NoopLLMProvider cannot count tokens.")
 
     def generate_structured(self, request: LLMGenerationRequest) -> LLMGenerationResponse:

@@ -51,8 +51,8 @@ class FakeProvider(LLMProvider):
             safety_margin_tokens=100,
         )
 
-    def count_tokens(self, system_prompt: str, user_prompt: str) -> int:
-        self.count_calls.append((system_prompt, user_prompt))
+    def count_tokens(self, request: LLMGenerationRequest) -> int:
+        self.count_calls.append((request.system_prompt, request.user_prompt))
         return self.token_count
 
     def generate_structured(self, request: LLMGenerationRequest) -> LLMGenerationResponse:
