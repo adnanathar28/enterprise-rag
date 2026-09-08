@@ -1,16 +1,19 @@
 # BRD Knowledge
 
-`brd-knowledge` is an early-stage backend project for converting Business Requirement Documents (BRDs) into a normalized, provenance-preserving JSON representation.
+`brd-knowledge` is an enterprise RAG application for converting Business Requirement
+Documents (BRDs) into a normalized, provenance-preserving knowledge workspace.
 
-Current phase: dense retrieval, deterministic context construction, and grounded
-answer generation with a Gemini adapter. Parsing, normalization, structure-aware
-chunking, embeddings, PostgreSQL/pgvector persistence, and retrieval evaluation
-are implemented. Lexical and hybrid RRF retrieval remain experimental.
+Current phase: dense retrieval, deterministic context construction, grounded answer
+generation with Gemini and local Qwen adapters, and a document-centered React UI.
+Parsing, normalization, structure-aware chunking, embeddings, PostgreSQL/pgvector
+persistence, and retrieval evaluation are implemented. Lexical and hybrid RRF
+retrieval remain experimental.
 
 ## Tech Stack
 
 - Python 3.11
 - FastAPI
+- React 19, TypeScript, Vite, and Tailwind CSS
 - Pydantic
 - pydantic-settings
 - Docling
@@ -50,6 +53,25 @@ Health check:
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
+
+## Frontend
+
+The first frontend slice supports existing indexed documents. It provides document
+selection, Gemini/Qwen selection, grounded questions, authoritative sources, and
+collapsed retrieval and generation diagnostics. Upload-to-index orchestration is a
+later phase; documents marked `not_indexed` or `needs_reindex` cannot be queried.
+
+Keep the API running on `127.0.0.1:8000`, then start the Vite development server:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies `/api` requests to FastAPI, so local
+development does not require a permissive CORS configuration. Run frontend checks
+with `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build`.
 
 ## Database
 
@@ -96,7 +118,8 @@ The CLI uses exact dense retrieval, unchanged `ContextBuilder` prefix packing,
 JSON containing the answer, authoritative resolved citations, token usage,
 returned model version, Gemini response ID (in `provider_request_id`), configuration,
 context exclusions, and elapsed time. Output may contain confidential answer text;
-handle any redirected output accordingly. There is no query API route.
+handle any redirected output accordingly. The same orchestration is available at
+`POST /documents/{document_id}/questions` for the frontend.
 
 ### Gemini baseline configuration
 
