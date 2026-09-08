@@ -154,6 +154,20 @@ function mockApi(documents: DocumentSummary[], answer = groundedResponse) {
   return fetchMock;
 }
 
+const ingestionResponse = {
+  document_id: readyDocument.document_id,
+  filename: readyDocument.filename,
+  parse_status: "success",
+  page_count: readyDocument.page_count,
+  block_count: 20,
+  table_count: 0,
+  table_cell_count: 0,
+  image_count: 0,
+  section_count: 4,
+  diagnostic_count: 0,
+  failed_page_count: 0,
+};
+
 async function openPreviousDocument() {
   await screen.findByRole("heading", { name: "Upload a document" });
   await userEvent.click(screen.getByRole("button", { name: "Previous documents" }));
@@ -204,9 +218,9 @@ test("keeps question controls disabled for an unindexed document", async () => {
   render(<App />);
   await openPreviousDocument();
 
-  expect(await screen.findByText(/needs search preparation/)).toBeVisible();
-  expect(screen.getByRole("button", { name: "Ask question" })).toBeDisabled();
-  expect(screen.getByRole("textbox")).toBeDisabled();
+  expect(await screen.findByText(/saved.*prepare it for search/i)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Prepare for search" })).toBeEnabled();
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 });
 
 test("shows the backend insufficient-evidence state without inventing sources", async () => {
@@ -252,4 +266,63 @@ test("offers PDF selection with an empty library", async () => {
   expect(screen.getByText("PDF · Up to 25 MB")).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "Previous documents" }));
   expect(screen.getByText("No documents have been added.")).toBeVisible();
+});
+
+test("uploads, indexes, and opens a newly ready document", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init;
+    const url = String(input);
+    if (url.endsWith("/documents/")) return jsonResponse([]);
+    if (url.endsWith("/capabilities")) return jsonResponse(capabilities);
+    if (url.endsWith("/documents/ingest")) return jsonResponse(ingestionResponse);
+    if (url.endsWith("/documents/doc-1/index")) return jsonResponse(readyDocument);
+    return jsonResponse({ detail: "Not found" }, 404);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<App />);
+
+  const input = await screen.findByLabelText("PDF document");
+  const file = new File(["pdf content"], readyDocument.filename, { type: "application/pdf" });
+  await userEvent.upload(input, file);
+
+  expect(await screen.findByRole("heading", { name: readyDocument.filename })).toBeVisible();
+  expect(screen.getByText("Ready for questions")).toBeVisible();
+  const ingestCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/documents/ingest"));
+  expect(ingestCall?.[1]?.method).toBe("POST");
+  expect(ingestCall?.[1]?.body).toBeInstanceOf(FormData);
+  expect((ingestCall?.[1]?.body as FormData).get("file")).toBe(file);
+  expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/documents/doc-1/index"))).toBe(true);
+});
+
+test("preserves an ingested document and retries failed preparation", async () => {
+  let preparationAttempts = 0;
+  const savedDocument = {
+    ...readyDocument,
+    indexing: { status: "not_indexed" as const, compatible_chunk_count: 0, total_chunk_count: 0 },
+  };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/documents/")) return jsonResponse([]);
+    if (url.endsWith("/capabilities")) return jsonResponse(capabilities);
+    if (url.endsWith("/documents/ingest")) return jsonResponse(ingestionResponse);
+    if (url.endsWith("/documents/doc-1/index")) {
+      preparationAttempts += 1;
+      return preparationAttempts === 1
+        ? jsonResponse({ detail: "Search preparation failed. The parsed document is saved; retry preparation." }, 503)
+        : jsonResponse(readyDocument);
+    }
+    if (url.endsWith("/documents/doc-1")) return jsonResponse(savedDocument);
+    return jsonResponse({ detail: "Not found" }, 404);
+  }));
+  render(<App />);
+  await userEvent.upload(
+    await screen.findByLabelText("PDF document"),
+    new File(["pdf content"], readyDocument.filename, { type: "application/pdf" }),
+  );
+
+  expect(await screen.findByText("The document is saved. Prepare it for search before asking questions.")).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent("The parsed document is saved");
+  await userEvent.click(screen.getByRole("button", { name: "Prepare for search" }));
+  expect(await screen.findByText("Ready for questions")).toBeVisible();
+  expect(preparationAttempts).toBe(2);
 });

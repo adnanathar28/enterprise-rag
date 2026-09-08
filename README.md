@@ -77,11 +77,18 @@ returns 422 for a failed parse, including its document ID when output was saved.
 
 ## Frontend
 
-The frontend opens on a PDF selection screen, with existing documents available
-through **Previous documents**. File selection and drag-and-drop are local only
-for now: the UI explicitly indicates that files have not been uploaded. Connecting
-the upload/index APIs is the next slice. File size limits come from the backend
-capabilities endpoint; this screen accepts only PDF when the backend allows it.
+The frontend opens on a PDF upload screen, with existing documents available
+through **Previous documents**. Choosing or dropping a valid PDF starts ingestion,
+then calls the indexing endpoint with the returned document ID. The UI shows the
+honest synchronous stages—uploading and parsing, then preparing for search—and
+opens the document workspace when the backend reports it ready. File size limits
+come from the backend capabilities endpoint; this screen accepts only PDF when the
+backend allows it.
+
+If parsing or upload fails, the selected file can be retried. If indexing fails,
+the frontend reloads the already-saved document and offers **Prepare for search**;
+the user does not need to upload it again. Previously saved documents that are not
+ready expose the same preparation action.
 
 Previously indexed documents retain Gemini/Qwen selection, grounded questions,
 authoritative sources, and collapsed retrieval and generation diagnostics.

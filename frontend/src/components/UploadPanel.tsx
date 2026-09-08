@@ -2,7 +2,23 @@ import { useRef, useState } from "react";
 
 import type { ApplicationCapabilities } from "../api/types";
 
-export function UploadPanel({ capabilities }: { capabilities: ApplicationCapabilities }) {
+export type UploadPhase = "uploading" | "indexing" | null;
+
+interface UploadPanelProps {
+  capabilities: ApplicationCapabilities;
+  phase: UploadPhase;
+  processingFilename: string | null;
+  uploadError: string | null;
+  onUpload: (file: File) => void;
+}
+
+export function UploadPanel({
+  capabilities,
+  phase,
+  processingFilename,
+  uploadError,
+  onUpload,
+}: UploadPanelProps) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,15 +42,31 @@ export function UploadPanel({ capabilities }: { capabilities: ApplicationCapabil
       setError("This file exceeds the upload size limit.");
     } else {
       setFile(candidate);
+      onUpload(candidate);
     }
   }
+
+  const busy = phase !== null;
 
   return (
     <section className="upload-workspace" aria-labelledby="upload-heading">
       <p className="eyebrow">Document workspace</p>
       <h1 id="upload-heading">Upload a document</h1>
       <p className="upload-intro">Ask questions. Find answers with sources.</p>
-      <div className="upload-dropzone" data-dragging={dragging}
+      {busy ? (
+        <div className="processing-panel" aria-live="polite">
+          <span className="processing-spinner" aria-hidden="true" />
+          <div>
+            <h2>{phase === "uploading" ? "Uploading and parsing document" : "Preparing for search"}</h2>
+            <p title={processingFilename ?? undefined}>{processingFilename}</p>
+          </div>
+          <ol className="processing-steps">
+            <li data-state={phase === "uploading" ? "active" : "complete"}>Upload and parse</li>
+            <li data-state={phase === "indexing" ? "active" : "pending"}>Prepare for search</li>
+            <li data-state="pending">Ready</li>
+          </ol>
+        </div>
+      ) : <div className="upload-dropzone" data-dragging={dragging}
         onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
         onDragLeave={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
@@ -56,13 +88,18 @@ export function UploadPanel({ capabilities }: { capabilities: ApplicationCapabil
         <span className="upload-limit">
           {pdfAllowed ? `PDF · Up to ${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(limit / 1_000_000)} MB` : "PDF uploads are unavailable on this server."}
         </span>
-      </div>
-      {error && <p className="query-error" role="alert">{error}</p>}
-      {file && <div className="selected-file" role="status">
-        <div><strong title={file.name}>{file.name}</strong><span>Selected locally · Not uploaded</span></div>
-        <button type="button" onClick={() => setFile(null)}>Remove</button>
       </div>}
-      <p className="upload-stage-note">File selection is available. Upload and processing will be connected in the next slice.</p>
+      {(error || uploadError) && <div className="query-error" role="alert">
+        <strong>Document could not be processed.</strong>
+        <span>{error ?? uploadError}</span>
+      </div>}
+      {file && !busy && <div className="selected-file" role="status">
+        <div><strong title={file.name}>{file.name}</strong><span>{uploadError ? "Upload failed" : busy ? "Processing" : "Selected"}</span></div>
+        {!busy && <div className="selected-file-actions">
+          {uploadError && <button type="button" onClick={() => onUpload(file)}>Try again</button>}
+          <button type="button" onClick={() => setFile(null)}>Remove</button>
+        </div>}
+      </div>}
     </section>
   );
 }

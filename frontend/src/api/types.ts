@@ -22,6 +22,20 @@ export interface DocumentSummary {
   indexing: IndexingSummary;
 }
 
+export interface IngestionSummary {
+  document_id: string;
+  filename: string;
+  parse_status: string | null;
+  page_count: number;
+  block_count: number;
+  table_count: number;
+  table_cell_count: number;
+  image_count: number;
+  section_count: number;
+  diagnostic_count: number;
+  failed_page_count: number;
+}
+
 export interface ProviderCapability {
   provider: ProviderName;
   label: string;

@@ -281,11 +281,38 @@ summary:hover { color: var(--text); }
 .upload-dropzone h2 { margin: 0; font-size: 17px; font-weight: 500; }
 .upload-dropzone p { margin: var(--space-1) 0 var(--space-4); color: var(--text-secondary); }
 .upload-limit { margin-top: var(--space-4); color: var(--text-muted); font-size: 12px; }
-.upload-stage-note { margin: var(--space-4) 0 0; color: var(--text-muted); font-size: 13px; }
 .selected-file { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4) 0; border-bottom: 1px solid var(--border); }
 .selected-file > div { min-width: 0; flex: 1; }
 .selected-file strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .selected-file span { display: block; margin-top: var(--space-1); font-size: 12px; color: var(--text-muted); }
+.selected-file-actions { display: flex; gap: var(--space-2); }
+.processing-panel {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-4);
+  padding: var(--space-8); border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface);
+}
+.processing-panel h2 { margin: 0; font-size: 17px; font-weight: 500; }
+.processing-panel p {
+  overflow: hidden; margin: var(--space-1) 0 0; color: var(--text-muted);
+  font-size: 13px; text-overflow: ellipsis; white-space: nowrap;
+}
+.processing-spinner {
+  width: 18px; height: 18px; margin-top: 3px; border: 2px solid var(--border-strong);
+  border-top-color: var(--accent); border-radius: 50%; animation: spin 900ms linear infinite;
+}
+.processing-steps {
+  grid-column: 2; display: grid; gap: var(--space-2); margin: var(--space-4) 0 0;
+  padding: 0; color: var(--text-muted); font-size: 13px; list-style: none;
+}
+.processing-steps li::before { content: "○"; display: inline-block; width: 20px; color: var(--text-muted); }
+.processing-steps li[data-state="active"] { color: var(--text); }
+.processing-steps li[data-state="active"]::before { content: "●"; color: var(--accent); }
+.processing-steps li[data-state="complete"]::before { content: "✓"; color: var(--text-secondary); }
+.preparation-panel { padding-top: var(--space-8); }
+.preparation-panel h2 { margin: 0; font-size: 16px; }
+.preparation-panel > p { margin: var(--space-2) 0 var(--space-4); color: var(--text-secondary); }
+.preparation-panel .query-error { margin: 0 0 var(--space-4); }
+@keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 560px) {
   .upload-workspace { padding: var(--space-8) var(--space-4); }
   .workspace-actions { gap: var(--space-1); }

@@ -2,6 +2,7 @@ import type {
   ApplicationCapabilities,
   DocumentQuestionResponse,
   DocumentSummary,
+  IngestionSummary,
   ProviderName,
 } from "./types";
 
@@ -22,8 +23,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     let message = `Request failed with status ${response.status}.`;
     try {
-      const payload = (await response.json()) as { detail?: string };
-      if (payload.detail) message = payload.detail;
+      const payload = (await response.json()) as {
+        detail?: string | { message?: string };
+      };
+      if (typeof payload.detail === "string") message = payload.detail;
+      else if (payload.detail?.message) message = payload.detail.message;
     } catch {
       // Keep the stable status-based message for non-JSON failures.
     }
@@ -38,6 +42,33 @@ export function listDocuments(signal?: AbortSignal): Promise<DocumentSummary[]> 
 
 export function getCapabilities(signal?: AbortSignal): Promise<ApplicationCapabilities> {
   return request<ApplicationCapabilities>("/capabilities", { signal });
+}
+
+export function getDocument(
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<DocumentSummary> {
+  return request<DocumentSummary>(`/documents/${encodeURIComponent(documentId)}`, { signal });
+}
+
+export function ingestDocument(file: File, signal?: AbortSignal): Promise<IngestionSummary> {
+  const body = new FormData();
+  body.append("file", file);
+  return request<IngestionSummary>("/documents/ingest", {
+    method: "POST",
+    body,
+    signal,
+  });
+}
+
+export function indexDocument(
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<DocumentSummary> {
+  return request<DocumentSummary>(`/documents/${encodeURIComponent(documentId)}/index`, {
+    method: "POST",
+    signal,
+  });
 }
 
 export function askDocumentQuestion(

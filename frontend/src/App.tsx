@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ApiError, askDocumentQuestion, getCapabilities, listDocuments } from "./api/client";
+import {
+  ApiError,
+  askDocumentQuestion,
+  getCapabilities,
+  getDocument,
+  indexDocument,
+  ingestDocument,
+  listDocuments,
+} from "./api/client";
 import type {
   ApplicationCapabilities,
   DocumentQuestionResponse,
@@ -10,7 +18,7 @@ import type {
 import { AnswerPanel } from "./components/AnswerPanel";
 import { DocumentSidebar } from "./components/DocumentSidebar";
 import { QuestionComposer } from "./components/QuestionComposer";
-import { UploadPanel } from "./components/UploadPanel";
+import { UploadPanel, type UploadPhase } from "./components/UploadPanel";
 
 interface InitialData {
   documents: DocumentSummary[];
@@ -33,6 +41,11 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadPhase, setUploadPhase] = useState<UploadPhase>(null);
+  const [processingFilename, setProcessingFilename] = useState<string | null>(null);
+  const [preparationError, setPreparationError] = useState<string | null>(null);
+  const [preparingDocumentId, setPreparingDocumentId] = useState<string | null>(null);
   const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -78,6 +91,67 @@ export function App() {
     setResult(null);
     setError(null);
     setSubmitting(false);
+    setPreparationError(null);
+  }
+
+  function upsertDocument(document: DocumentSummary) {
+    setInitialData((current) => current && {
+      ...current,
+      documents: [document, ...current.documents.filter(
+        (candidate) => candidate.document_id !== document.document_id,
+      )],
+    });
+  }
+
+  async function uploadDocument(file: File) {
+    setUploadError(null);
+    setProcessingFilename(file.name);
+    setUploadPhase("uploading");
+    try {
+      const ingestion = await ingestDocument(file);
+      setUploadPhase("indexing");
+      try {
+        const indexed = await indexDocument(ingestion.document_id);
+        upsertDocument(indexed);
+        setSelectedDocumentId(indexed.document_id);
+        setUploadPhase(null);
+        setProcessingFilename(null);
+      } catch (indexingError) {
+        const message = errorMessage(indexingError);
+        let recoveredSavedDocument = false;
+        try {
+          const saved = await getDocument(ingestion.document_id);
+          upsertDocument(saved);
+          setSelectedDocumentId(saved.document_id);
+          recoveredSavedDocument = true;
+        } catch {
+          setUploadError(message || "Search preparation failed.");
+        }
+        if (recoveredSavedDocument) {
+          setPreparationError(message || "Search preparation failed.");
+        }
+        setUploadPhase(null);
+        setProcessingFilename(null);
+      }
+    } catch (ingestionError) {
+      const message = errorMessage(ingestionError);
+      if (message) setUploadError(message);
+      setUploadPhase(null);
+    }
+  }
+
+  async function prepareDocument(documentId: string) {
+    setPreparingDocumentId(documentId);
+    setPreparationError(null);
+    try {
+      const indexed = await indexDocument(documentId);
+      upsertDocument(indexed);
+    } catch (indexingError) {
+      const message = errorMessage(indexingError);
+      if (message) setPreparationError(message);
+    } finally {
+      setPreparingDocumentId(null);
+    }
   }
 
   async function submitQuestion() {
@@ -145,7 +219,13 @@ export function App() {
               <span />
             </div>
           ) : !selectedDocument ? (
-            initialData && <UploadPanel capabilities={initialData.capabilities} />
+            initialData && <UploadPanel
+              capabilities={initialData.capabilities}
+              phase={uploadPhase}
+              processingFilename={processingFilename}
+              uploadError={uploadError}
+              onUpload={uploadDocument}
+            />
           ) : (
             <div className="document-workspace">
               <header className="document-header">
@@ -163,7 +243,21 @@ export function App() {
                 </div>
               </header>
 
-              <QuestionComposer
+              {selectedDocument.indexing.status !== "ready" ? (
+                <section className="preparation-panel" aria-labelledby="preparation-heading">
+                  <h2 id="preparation-heading">Prepare this document for questions</h2>
+                  <p>The document is saved. Prepare it for search before asking questions.</p>
+                  {preparationError && <div className="query-error" role="alert">
+                    <strong>Search preparation failed.</strong>
+                    <span>{preparationError}</span>
+                  </div>}
+                  <button className="submit-button" type="button"
+                    disabled={preparingDocumentId === selectedDocument.document_id}
+                    onClick={() => prepareDocument(selectedDocument.document_id)}>
+                    {preparingDocumentId === selectedDocument.document_id ? "Preparing…" : "Prepare for search"}
+                  </button>
+                </section>
+              ) : <QuestionComposer
                 document={selectedDocument}
                 providers={initialData?.capabilities.providers ?? []}
                 selectedProvider={selectedProvider}
@@ -172,7 +266,7 @@ export function App() {
                 onProviderChange={setSelectedProvider}
                 onQuestionChange={setQuestion}
                 onSubmit={submitQuestion}
-              />
+              />}
 
               {error && (
                 <div className="query-error" role="alert">
