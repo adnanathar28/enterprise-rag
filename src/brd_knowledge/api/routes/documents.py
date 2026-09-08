@@ -6,18 +6,30 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from brd_knowledge.api.dependencies import (
     document_persistence_service_dependency,
+    embedding_provider_dependency,
     file_intake_service_dependency,
     ingestion_service_dependency,
+    question_answering_service_dependency,
 )
+from brd_knowledge.core.exceptions import (
+    GenerationBlockedError,
+    GenerationProviderError,
+    InvalidCitationError,
+    MalformedGenerationResponse,
+    PromptBudgetExceeded,
+)
+from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
 from brd_knowledge.parsing.options import ParseOptions
 from brd_knowledge.schemas.ingestion import IngestionSummary
 from brd_knowledge.schemas.persisted_document import (
     PersistedDocumentSummary,
     PersistedParsedDocument,
 )
+from brd_knowledge.schemas.query import DocumentQuestionRequest, DocumentQuestionResponse
 from brd_knowledge.services.document_persistence_service import DocumentPersistenceService
 from brd_knowledge.services.file_intake_service import FileIntakeService
 from brd_knowledge.services.ingestion_service import IngestionService
+from brd_knowledge.services.question_answering_service import QuestionAnsweringService
 
 router = APIRouter()
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
@@ -29,9 +41,19 @@ def list_documents(
         DocumentPersistenceService,
         Depends(document_persistence_service_dependency),
     ],
+    embedding_provider: Annotated[
+        GteModernBertEmbeddingProvider,
+        Depends(embedding_provider_dependency),
+    ],
 ) -> list[PersistedDocumentSummary]:
     return [
-        PersistedDocumentSummary.from_model(document)
+        PersistedDocumentSummary.from_model(
+            document,
+            document_persistence_service.get_indexing_summary(
+                document.document_id,
+                embedding_provider.configuration,
+            ),
+        )
         for document in document_persistence_service.list_documents()
     ]
 
@@ -43,11 +65,67 @@ def get_document(
         DocumentPersistenceService,
         Depends(document_persistence_service_dependency),
     ],
+    embedding_provider: Annotated[
+        GteModernBertEmbeddingProvider,
+        Depends(embedding_provider_dependency),
+    ],
 ) -> PersistedDocumentSummary:
     document = document_persistence_service.get_document(document_id)
     if document is None:
         raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
-    return PersistedDocumentSummary.from_model(document)
+    return PersistedDocumentSummary.from_model(
+        document,
+        document_persistence_service.get_indexing_summary(
+            document.document_id,
+            embedding_provider.configuration,
+        ),
+    )
+
+
+@router.post("/{document_id}/questions", response_model=DocumentQuestionResponse)
+def ask_document_question(
+    document_id: str,
+    request: DocumentQuestionRequest,
+    document_persistence_service: Annotated[
+        DocumentPersistenceService,
+        Depends(document_persistence_service_dependency),
+    ],
+    embedding_provider: Annotated[
+        GteModernBertEmbeddingProvider,
+        Depends(embedding_provider_dependency),
+    ],
+    question_service: Annotated[
+        QuestionAnsweringService,
+        Depends(question_answering_service_dependency),
+    ],
+) -> DocumentQuestionResponse:
+    if document_persistence_service.get_document(document_id) is None:
+        raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
+    indexing = document_persistence_service.get_indexing_summary(
+        document_id,
+        embedding_provider.configuration,
+    )
+    if indexing.status != "ready":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Document is not ready for questions: {indexing.status}",
+        )
+    try:
+        return question_service.answer(document_id, request)
+    except PromptBudgetExceeded as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except GenerationBlockedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (InvalidCitationError, MalformedGenerationResponse) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The model returned an invalid grounded answer.",
+        ) from exc
+    except GenerationProviderError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The configured model provider failed.",
+        ) from exc
 
 
 @router.get("/{document_id}/parsed", response_model=PersistedParsedDocument)

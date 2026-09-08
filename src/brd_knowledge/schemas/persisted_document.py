@@ -1,9 +1,15 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from brd_knowledge.database.models.document import Document
+
+
+class DocumentIndexingSummary(BaseModel):
+    status: Literal["not_indexed", "ready", "needs_reindex"]
+    compatible_chunk_count: int = Field(ge=0)
+    total_chunk_count: int = Field(ge=0)
 
 
 class PersistedDocumentSummary(BaseModel):
@@ -18,9 +24,14 @@ class PersistedDocumentSummary(BaseModel):
     parser_name: str | None = None
     parser_version: str | None = None
     created_at: datetime
+    indexing: DocumentIndexingSummary
 
     @classmethod
-    def from_model(cls, document: Document) -> "PersistedDocumentSummary":
+    def from_model(
+        cls,
+        document: Document,
+        indexing: DocumentIndexingSummary,
+    ) -> "PersistedDocumentSummary":
         return cls(
             document_id=document.document_id,
             filename=document.filename,
@@ -33,6 +44,7 @@ class PersistedDocumentSummary(BaseModel):
             parser_name=document.parser_name,
             parser_version=document.parser_version,
             created_at=document.created_at,
+            indexing=indexing,
         )
 
 

@@ -1,20 +1,29 @@
 from pathlib import Path
 from shutil import copy2
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
+from tests.unit.test_grounded_answer_generation import FakeProvider
 
 from brd_knowledge.api.dependencies import (
     document_persistence_service_dependency,
+    embedding_provider_dependency,
     file_intake_service_dependency,
     ingestion_service_dependency,
+    question_answering_service_dependency,
+    settings_dependency,
 )
+from brd_knowledge.core.config import Settings
 from brd_knowledge.main import app
 from brd_knowledge.parsing.options import ParseOptions
 from brd_knowledge.schemas.document import DocumentMetadata, Page, ParsedDocument, ParserMetadata
 from brd_knowledge.schemas.ingestion import IngestionResult
+from brd_knowledge.schemas.persisted_document import DocumentIndexingSummary
+from brd_knowledge.schemas.retrieval import RetrievedChunk
 from brd_knowledge.schemas.source_file import StoredSourceFile
+from brd_knowledge.services.question_answering_service import QuestionAnsweringService
 
 
 class FakeFileIntakeService:
@@ -70,8 +79,12 @@ class FakeIngestionService:
 
 
 class FakeDocumentPersistenceService:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        indexing_status: Literal["not_indexed", "ready", "needs_reindex"] = "ready",
+    ) -> None:
         self.calls: list[tuple[StoredSourceFile, IngestionResult]] = []
+        self.indexing_status = indexing_status
         self.documents = [
             SimpleNamespace(
                 document_id="doc-001",
@@ -117,6 +130,46 @@ class FakeDocumentPersistenceService:
 
     def get_parsed_document_json(self, document_id: str) -> dict[str, Any] | None:
         return self.parsed_documents.get(document_id)
+
+    def get_indexing_summary(
+        self,
+        document_id: str,
+        configuration: object,
+    ) -> DocumentIndexingSummary:
+        del document_id, configuration
+        count = 1 if self.indexing_status == "ready" else 0
+        return DocumentIndexingSummary(
+            status=self.indexing_status,
+            compatible_chunk_count=count,
+            total_chunk_count=count,
+        )
+
+
+class FakeRetriever:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int, str | None]] = []
+
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        document_id: str | None = None,
+    ) -> list[RetrievedChunk]:
+        self.calls.append((query, top_k, document_id))
+        return [
+            RetrievedChunk(
+                rank=1,
+                cosine_distance=0.1,
+                similarity=0.9,
+                chunk_id="chunk-1",
+                document_id=document_id or "doc-001",
+                content_type="prose",
+                text="Audit records must be retained.",
+                page_start=7,
+                page_end=7,
+            )
+        ]
 
 
 def test_ingest_document_upload_returns_summary(tmp_path: Path) -> None:
@@ -241,6 +294,9 @@ def test_ingest_document_returns_intake_validation_errors(tmp_path: Path) -> Non
 def test_list_documents_returns_persisted_summaries() -> None:
     persistence_service = FakeDocumentPersistenceService()
     app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+    app.dependency_overrides[embedding_provider_dependency] = lambda: SimpleNamespace(
+        configuration=object()
+    )
 
     try:
         client = TestClient(app)
@@ -252,11 +308,15 @@ def test_list_documents_returns_persisted_summaries() -> None:
     assert response.json()[0]["document_id"] == "doc-001"
     assert response.json()[0]["filename"] == "sample.pdf"
     assert response.json()[0]["parse_status"] == "success"
+    assert response.json()[0]["indexing"]["status"] == "ready"
 
 
 def test_get_document_returns_persisted_summary() -> None:
     persistence_service = FakeDocumentPersistenceService()
     app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+    app.dependency_overrides[embedding_provider_dependency] = lambda: SimpleNamespace(
+        configuration=object()
+    )
 
     try:
         client = TestClient(app)
@@ -272,6 +332,9 @@ def test_get_document_returns_persisted_summary() -> None:
 def test_get_document_returns_404_for_missing_document() -> None:
     persistence_service = FakeDocumentPersistenceService()
     app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+    app.dependency_overrides[embedding_provider_dependency] = lambda: SimpleNamespace(
+        configuration=object()
+    )
 
     try:
         client = TestClient(app)
@@ -296,3 +359,82 @@ def test_get_parsed_document_returns_stored_json() -> None:
     assert response.status_code == 200
     assert response.json()["document_id"] == "doc-001"
     assert response.json()["parsed_document"]["metadata"]["document_id"] == "doc-001"
+
+
+def test_ask_document_question_returns_grounded_answer_and_evidence() -> None:
+    persistence_service = FakeDocumentPersistenceService()
+    retriever = FakeRetriever()
+    provider = FakeProvider()
+    question_service = QuestionAnsweringService(
+        retriever,
+        Settings(_env_file=None),
+        provider_factory=lambda *_args, **_kwargs: provider,
+    )
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+    app.dependency_overrides[embedding_provider_dependency] = lambda: SimpleNamespace(
+        configuration=object()
+    )
+    app.dependency_overrides[question_answering_service_dependency] = lambda: question_service
+
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/documents/doc-001/questions",
+            json={"question": "What must be retained?", "provider": "local_qwen"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"]["citations"][0]["chunk_id"] == "chunk-1"
+    assert payload["answer"]["citations"][0]["page_start"] == 7
+    assert payload["context"]["evidence"][0]["evidence_id"] == "E1"
+    assert payload["retrieved_chunks"][0]["similarity"] == 0.9
+    assert retriever.calls == [("What must be retained?", 5, "doc-001")]
+
+
+def test_ask_document_question_rejects_document_that_is_not_indexed() -> None:
+    persistence_service = FakeDocumentPersistenceService(indexing_status="not_indexed")
+    question_service = MagicMock()
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+    app.dependency_overrides[embedding_provider_dependency] = lambda: SimpleNamespace(
+        configuration=object()
+    )
+    app.dependency_overrides[question_answering_service_dependency] = lambda: question_service
+
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/documents/doc-001/questions",
+            json={"question": "What must be retained?"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"].endswith("not_indexed")
+    question_service.answer.assert_not_called()
+
+
+def test_capabilities_reports_provider_configuration_without_secrets() -> None:
+    settings = Settings(
+        _env_file=None,
+        LLM_PROVIDER="local_qwen",
+        GEMINI_API_KEY="secret-test-key",
+    )
+    app.dependency_overrides[settings_dependency] = lambda: settings
+
+    try:
+        client = TestClient(app)
+        response = client.get("/capabilities")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["providers"][0]["provider"] == "local_qwen"
+    assert payload["providers"][0]["is_default"] is True
+    assert payload["providers"][1]["provider"] == "gemini"
+    assert payload["providers"][1]["configured"] is True
+    assert "secret-test-key" not in response.text

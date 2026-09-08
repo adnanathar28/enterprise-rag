@@ -1,9 +1,13 @@
-from typing import Any
+from typing import Any, Literal
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from brd_knowledge.database.models.chunk_embedding import ChunkEmbedding
 from brd_knowledge.database.models.document import Document
+from brd_knowledge.embeddings.base import EmbeddingConfiguration
 from brd_knowledge.schemas.ingestion import IngestionResult
+from brd_knowledge.schemas.persisted_document import DocumentIndexingSummary
 from brd_knowledge.schemas.source_file import StoredSourceFile
 
 
@@ -54,3 +58,38 @@ class DocumentPersistenceService:
 
     def list_documents(self) -> list[Document]:
         return self._session.query(Document).order_by(Document.created_at.desc()).all()
+
+    def get_indexing_summary(
+        self,
+        document_id: str,
+        configuration: EmbeddingConfiguration,
+    ) -> DocumentIndexingSummary:
+        base = (
+            select(func.count())
+            .select_from(ChunkEmbedding)
+            .where(ChunkEmbedding.document_id == document_id)
+        )
+        total = int(self._session.scalar(base) or 0)
+        compatible = int(
+            self._session.scalar(
+                base.where(
+                    ChunkEmbedding.embedding_model == configuration.model_name,
+                    ChunkEmbedding.embedding_revision == configuration.model_revision,
+                    ChunkEmbedding.embedding_config_hash == configuration.config_hash,
+                    ChunkEmbedding.embedding_dimension == configuration.dimension,
+                )
+            )
+            or 0
+        )
+        status: Literal["not_indexed", "ready", "needs_reindex"]
+        if compatible and compatible == total:
+            status = "ready"
+        elif total:
+            status = "needs_reindex"
+        else:
+            status = "not_indexed"
+        return DocumentIndexingSummary(
+            status=status,
+            compatible_chunk_count=compatible,
+            total_chunk_count=total,
+        )

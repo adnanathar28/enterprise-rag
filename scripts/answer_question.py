@@ -3,20 +3,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from time import perf_counter
 
 from pydantic import ValidationError
 
-from brd_knowledge.context import ContextBuilder
 from brd_knowledge.core.config import get_settings
 from brd_knowledge.core.exceptions import GenerationError
 from brd_knowledge.database.session import SessionLocal
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
-from brd_knowledge.generation import GroundedAnswerService
 from brd_knowledge.llm.factory import create_llm_provider
 from brd_knowledge.retrieval import PgVectorRetriever
-from brd_knowledge.schemas.context import ContextBuildRequest
-from brd_knowledge.schemas.generation import GroundedAnswerRequest
+from brd_knowledge.schemas.query import DocumentQuestionRequest
+from brd_knowledge.services.question_answering_service import QuestionAnsweringService
 
 
 def positive_int(value: str) -> int:
@@ -49,6 +46,7 @@ def main() -> None:
     args = parse_args()
     settings = get_settings()
     provider = create_llm_provider(settings, provider=args.provider, model=args.model)
+    provider_handed_off = False
     try:
         configuration = provider.configuration
         if (
@@ -56,7 +54,6 @@ def main() -> None:
             and args.max_output_tokens > configuration.max_output_tokens
         ):
             raise ValueError("max-output-tokens exceeds the configured model output limit.")
-        started = perf_counter()
         embedding_provider = GteModernBertEmbeddingProvider(
             model_name=settings.embedding_model_name,
             model_revision=settings.embedding_model_revision,
@@ -67,31 +64,43 @@ def main() -> None:
             preprocessing_version=settings.embedding_preprocessing_version,
         )
         with SessionLocal() as session:
-            chunks = PgVectorRetriever(session, embedding_provider).search(
-                args.question, top_k=args.top_k, document_id=args.document_id
+            question_service = QuestionAnsweringService(
+                PgVectorRetriever(session, embedding_provider),
+                settings,
+                provider_factory=lambda *_args, **_kwargs: provider,
             )
-        context = ContextBuilder().build(
-            ContextBuildRequest(retrieved_chunks=chunks, max_characters=args.max_characters)
-        )
-        answer = GroundedAnswerService(provider).generate(
-            GroundedAnswerRequest(
-                question=args.question, context=context, max_output_tokens=args.max_output_tokens
+            provider_handed_off = True
+            result = question_service.answer(
+                args.document_id,
+                DocumentQuestionRequest(
+                    question=args.question,
+                    provider=args.provider,
+                    model=args.model,
+                ),
+                top_k=args.top_k,
+                max_context_characters=args.max_characters,
+                max_output_tokens=args.max_output_tokens,
             )
-        )
-    finally:
-        provider.close()
+    except Exception:
+        # The shared service owns provider closure after it starts. Close providers
+        # that fail validation before orchestration begins.
+        if not provider_handed_off:
+            provider.close()
+        raise
     print(
         json.dumps(
             {
-                "answer": answer.model_dump(mode="json"),
+                "answer": result.answer.model_dump(mode="json"),
                 "configuration": configuration.model_dump(mode="json"),
                 "context": {
-                    "retrieved_chunks": len(chunks),
-                    "included_chunks": len(context.evidence),
-                    "used_characters": context.used_characters,
-                    "exclusions": [item.model_dump(mode="json") for item in context.exclusions],
+                    "retrieved_chunks": len(result.retrieved_chunks),
+                    "included_chunks": len(result.context.evidence),
+                    "used_characters": result.context.used_characters,
+                    "exclusions": [
+                        item.model_dump(mode="json") for item in result.context.exclusions
+                    ],
                 },
-                "elapsed_seconds": round(perf_counter() - started, 3),
+                "elapsed_seconds": round(result.elapsed_seconds, 3),
             },
             indent=2,
         )

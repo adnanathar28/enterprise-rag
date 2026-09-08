@@ -24,8 +24,15 @@ from brd_knowledge.schemas.generation import (
 )
 from brd_knowledge.schemas.ingestion import IngestionResult, IngestionSummary
 from brd_knowledge.schemas.persisted_document import (
+    DocumentIndexingSummary,
     PersistedDocumentSummary,
     PersistedParsedDocument,
+)
+from brd_knowledge.schemas.query import (
+    ApplicationCapabilities,
+    DocumentQuestionRequest,
+    DocumentQuestionResponse,
+    ProviderCapability,
 )
 from brd_knowledge.schemas.requirement import ExtractedRequirement
 from brd_knowledge.schemas.section import DocumentSection
@@ -34,6 +41,7 @@ from brd_knowledge.schemas.source_file import StoredSourceFile
 from brd_knowledge.schemas.table import ParsedTable, TableCell, TableRow
 
 __all__ = [
+    "ApplicationCapabilities",
     "BoundingBox",
     "Chunk",
     "ChunkContentType",
@@ -42,6 +50,9 @@ __all__ = [
     "ContextEvidence",
     "ContextExclusion",
     "DocumentBlock",
+    "DocumentIndexingSummary",
+    "DocumentQuestionRequest",
+    "DocumentQuestionResponse",
     "DocumentMetadata",
     "DocumentSection",
     "ExtractedRequirement",
@@ -59,6 +70,7 @@ __all__ = [
     "ParserMetadata",
     "PersistedDocumentSummary",
     "PersistedParsedDocument",
+    "ProviderCapability",
     "ResolvedCitation",
     "SourceReference",
     "StoredSourceFile",

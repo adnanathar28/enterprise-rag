@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from brd_knowledge.api.routes.capabilities import router as capabilities_router
 from brd_knowledge.api.routes.documents import router as documents_router
 from brd_knowledge.api.routes.requirements import router as requirements_router
 from brd_knowledge.core.config import get_settings
@@ -15,4 +16,5 @@ def health_check() -> dict[str, str]:
 
 
 app.include_router(documents_router, prefix="/documents", tags=["documents"])
+app.include_router(capabilities_router, prefix="/capabilities", tags=["capabilities"])
 app.include_router(requirements_router, prefix="/requirements", tags=["requirements"])
