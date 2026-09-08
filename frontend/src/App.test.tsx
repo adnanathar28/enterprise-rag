@@ -141,12 +141,16 @@ function jsonResponse(payload: unknown, status = 200): Response {
   });
 }
 
-function mockApi(documents: DocumentSummary[], answer = groundedResponse) {
+function mockApi(
+  documents: DocumentSummary[],
+  answer = groundedResponse,
+  providerCapabilities = capabilities,
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     void init;
     const url = String(input);
     if (url.endsWith("/documents/")) return jsonResponse(documents);
-    if (url.endsWith("/capabilities")) return jsonResponse(capabilities);
+    if (url.endsWith("/capabilities")) return jsonResponse(providerCapabilities);
     if (url.endsWith("/documents/doc-1/questions")) return jsonResponse(answer);
     return jsonResponse({ detail: "Not found" }, 404);
   });
@@ -208,7 +212,7 @@ test("asks a document-scoped question and renders authoritative evidence", async
   });
 });
 
-test("keeps question controls disabled for an unindexed document", async () => {
+test("offers preparation instead of question controls for an unindexed document", async () => {
   mockApi([
     {
       ...readyDocument,
@@ -325,4 +329,67 @@ test("preserves an ingested document and retries failed preparation", async () =
   await userEvent.click(screen.getByRole("button", { name: "Prepare for search" }));
   expect(await screen.findByText("Ready for questions")).toBeVisible();
   expect(preparationAttempts).toBe(2);
+});
+
+test("retries initial API loading without reloading the page", async () => {
+  let documentRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/capabilities")) return jsonResponse(capabilities);
+    if (url.endsWith("/documents/")) {
+      documentRequests += 1;
+      return documentRequests === 1
+        ? jsonResponse({ detail: "Database unavailable" }, 503)
+        : jsonResponse([]);
+    }
+    return jsonResponse({ detail: "Not found" }, 404);
+  }));
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "Knowledge service unavailable" })).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("heading", { name: "Upload a document" })).toBeVisible();
+  expect(documentRequests).toBe(2);
+});
+
+test("makes an unavailable provider explicit", async () => {
+  const unavailable = {
+    ...capabilities,
+    providers: capabilities.providers.map((provider) => ({ ...provider, configured: false })),
+  };
+  mockApi([readyDocument], groundedResponse, unavailable);
+  render(<App />);
+  await openPreviousDocument();
+
+  expect(screen.getByRole("combobox", { name: "Model provider" })).toBeDisabled();
+  expect(screen.getByText("No provider available")).toBeVisible();
+  expect(screen.getByText("Configure a model provider before asking questions.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeDisabled();
+});
+
+test("retries a failed question while preserving the question", async () => {
+  let questionAttempts = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/documents/")) return jsonResponse([readyDocument]);
+    if (url.endsWith("/capabilities")) return jsonResponse(capabilities);
+    if (url.endsWith("/documents/doc-1/questions")) {
+      questionAttempts += 1;
+      return questionAttempts === 1
+        ? jsonResponse({ detail: "The configured model provider failed." }, 502)
+        : jsonResponse(groundedResponse);
+    }
+    return jsonResponse({ detail: "Not found" }, 404);
+  }));
+  render(<App />);
+  await openPreviousDocument();
+  const input = screen.getByRole("textbox");
+  await userEvent.type(input, groundedResponse.question);
+  await userEvent.click(screen.getByRole("button", { name: "Ask question" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("model provider failed");
+  expect(input).toHaveValue(groundedResponse.question);
+  await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("heading", { name: "Grounded response" })).toBeVisible();
+  expect(questionAttempts).toBe(2);
 });

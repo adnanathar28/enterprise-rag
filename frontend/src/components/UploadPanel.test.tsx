@@ -16,6 +16,7 @@ const baseProps = {
   processingFilename: null,
   uploadError: null,
   onUpload: vi.fn(),
+  onReset: vi.fn(),
 } as const;
 
 test("selects and removes a PDF locally without implying it was uploaded", async () => {

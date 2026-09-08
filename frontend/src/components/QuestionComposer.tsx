@@ -22,7 +22,9 @@ export function QuestionComposer({
   onSubmit,
 }: QuestionComposerProps) {
   const ready = document.indexing.status === "ready";
-  const canSubmit = ready && Boolean(question.trim()) && Boolean(selectedProvider) && !submitting;
+  const selectedCapability = providers.find((provider) => provider.provider === selectedProvider);
+  const providerAvailable = selectedCapability?.configured === true;
+  const canSubmit = ready && Boolean(question.trim()) && providerAvailable && !submitting;
 
   return (
     <section className="question-section" aria-labelledby="question-heading">
@@ -68,10 +70,14 @@ export function QuestionComposer({
             <span>Provider</span>
             <select
               aria-label="Model provider"
+              aria-describedby={!providerAvailable ? "provider-status" : undefined}
               value={selectedProvider ?? ""}
-              disabled={submitting}
-              onChange={(event) => onProviderChange(event.target.value as ProviderName)}
+              disabled={submitting || !providers.some((provider) => provider.configured)}
+              onChange={(event) => {
+                if (event.target.value) onProviderChange(event.target.value as ProviderName);
+              }}
             >
+              {!selectedProvider && <option value="">No provider available</option>}
               {providers.map((provider) => (
                 <option
                   key={provider.provider}
@@ -88,6 +94,11 @@ export function QuestionComposer({
             {submitting ? "Searching…" : "Ask question"}
           </button>
         </div>
+        {!providerAvailable && (
+          <p className="provider-note" id="provider-status" role="status">
+            Configure a model provider before asking questions.
+          </p>
+        )}
       </form>
     </section>
   );

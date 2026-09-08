@@ -10,6 +10,7 @@ interface UploadPanelProps {
   processingFilename: string | null;
   uploadError: string | null;
   onUpload: (file: File) => void;
+  onReset: () => void;
 }
 
 export function UploadPanel({
@@ -18,6 +19,7 @@ export function UploadPanel({
   processingFilename,
   uploadError,
   onUpload,
+  onReset,
 }: UploadPanelProps) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -42,6 +44,7 @@ export function UploadPanel({
       setError("This file exceeds the upload size limit.");
     } else {
       setFile(candidate);
+      onReset();
       onUpload(candidate);
     }
   }
@@ -94,10 +97,10 @@ export function UploadPanel({
         <span>{error ?? uploadError}</span>
       </div>}
       {file && !busy && <div className="selected-file" role="status">
-        <div><strong title={file.name}>{file.name}</strong><span>{uploadError ? "Upload failed" : busy ? "Processing" : "Selected"}</span></div>
+        <div><strong title={file.name}>{file.name}</strong><span>{uploadError ? "Upload failed" : "Selected"}</span></div>
         {!busy && <div className="selected-file-actions">
           {uploadError && <button type="button" onClick={() => onUpload(file)}>Try again</button>}
-          <button type="button" onClick={() => setFile(null)}>Remove</button>
+          <button type="button" onClick={() => { setFile(null); onReset(); }}>Remove</button>
         </div>}
       </div>}
     </section>

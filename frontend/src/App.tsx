@@ -46,6 +46,7 @@ export function App() {
   const [processingFilename, setProcessingFilename] = useState<string | null>(null);
   const [preparationError, setPreparationError] = useState<string | null>(null);
   const [preparingDocumentId, setPreparingDocumentId] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export function App() {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [loadAttempt]);
 
   useEffect(() => () => activeRequest.current?.abort(), []);
 
@@ -92,6 +93,12 @@ export function App() {
     setError(null);
     setSubmitting(false);
     setPreparationError(null);
+  }
+
+  function retryWorkspaceLoad() {
+    setError(null);
+    setLoading(true);
+    setLoadAttempt((attempt) => attempt + 1);
   }
 
   function upsertDocument(document: DocumentSummary) {
@@ -191,6 +198,7 @@ export function App() {
         <nav className="workspace-actions" aria-label="Workspace navigation">
           {selectedDocument && <button type="button" onClick={() => selectDocument(null)}>Upload a document</button>}
           <button type="button" aria-expanded={libraryOpen} aria-controls="previous-documents"
+            disabled={uploadPhase !== null}
             onClick={() => setLibraryOpen(!libraryOpen)}>Previous documents</button>
         </nav>
       </header>
@@ -211,6 +219,9 @@ export function App() {
               <p className="eyebrow">Connection error</p>
               <h1>Knowledge service unavailable</h1>
               <p>{error}</p>
+              <button className="secondary-button" type="button" onClick={retryWorkspaceLoad}>
+                Try again
+              </button>
             </div>
           ) : loading ? (
             <div className="workspace-loading" aria-label="Loading workspace">
@@ -225,6 +236,7 @@ export function App() {
               processingFilename={processingFilename}
               uploadError={uploadError}
               onUpload={uploadDocument}
+              onReset={() => setUploadError(null)}
             />
           ) : (
             <div className="document-workspace">
@@ -247,6 +259,12 @@ export function App() {
                 <section className="preparation-panel" aria-labelledby="preparation-heading">
                   <h2 id="preparation-heading">Prepare this document for questions</h2>
                   <p>The document is saved. Prepare it for search before asking questions.</p>
+                  {preparingDocumentId === selectedDocument.document_id && (
+                    <p className="operation-note" role="status">
+                      <span className="processing-spinner" aria-hidden="true" />
+                      Preparing for search. The saved document will remain available if this attempt fails.
+                    </p>
+                  )}
                   {preparationError && <div className="query-error" role="alert">
                     <strong>Search preparation failed.</strong>
                     <span>{preparationError}</span>
@@ -263,8 +281,8 @@ export function App() {
                 selectedProvider={selectedProvider}
                 question={question}
                 submitting={submitting}
-                onProviderChange={setSelectedProvider}
-                onQuestionChange={setQuestion}
+                onProviderChange={(provider) => { setSelectedProvider(provider); setError(null); }}
+                onQuestionChange={(value) => { setQuestion(value); setError(null); }}
                 onSubmit={submitQuestion}
               />}
 
@@ -272,6 +290,9 @@ export function App() {
                 <div className="query-error" role="alert">
                   <strong>Question could not be completed.</strong>
                   <span>{error}</span>
+                  <button className="text-button" type="button" onClick={submitQuestion}>
+                    Try again
+                  </button>
                 </div>
               )}
 
