@@ -22,6 +22,8 @@ env/
 # Build artifacts
 build/
 dist/
+node_modules/
+*.tsbuildinfo
 *.egg-info/
 
 # IDE and OS files
