@@ -11,8 +11,8 @@ import type {
 
 const readyDocument: DocumentSummary = {
   document_id: "doc-1",
-  filename: "Enterprise Controls BRD.pdf",
-  original_filename: "Enterprise Controls BRD.pdf",
+  filename: "Employee_Handbook.pdf",
+  original_filename: "Employee_Handbook.pdf",
   stored_filename: "stored.pdf",
   file_type: "pdf",
   size_bytes: 42_000,
@@ -45,7 +45,7 @@ const capabilities: ApplicationCapabilities = {
       is_default: false,
     },
   ],
-  allowed_document_extensions: [".docx", ".pdf"],
+  allowed_document_extensions: [".pdf"],
   max_upload_size_bytes: 25_000_000,
 };
 
@@ -154,10 +154,17 @@ function mockApi(documents: DocumentSummary[], answer = groundedResponse) {
   return fetchMock;
 }
 
+async function openPreviousDocument() {
+  await screen.findByRole("heading", { name: "Upload a document" });
+  await userEvent.click(screen.getByRole("button", { name: "Previous documents" }));
+  await userEvent.click(screen.getByRole("button", { name: new RegExp(readyDocument.filename) }));
+}
+
 test("asks a document-scoped question and renders authoritative evidence", async () => {
   const fetchMock = mockApi([readyDocument]);
   const user = userEvent.setup();
   render(<App />);
+  await openPreviousDocument();
 
   expect(await screen.findByRole("heading", { name: readyDocument.filename })).toBeVisible();
   await user.type(
@@ -195,21 +202,11 @@ test("keeps question controls disabled for an unindexed document", async () => {
     },
   ]);
   render(<App />);
+  await openPreviousDocument();
 
-  expect(await screen.findByText(/must be indexed with the active embedding/)).toBeVisible();
+  expect(await screen.findByText(/needs search preparation/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Ask question" })).toBeDisabled();
   expect(screen.getByRole("textbox")).toBeDisabled();
-});
-
-test("example questions fill the composer without calling generation", async () => {
-  const fetchMock = mockApi([readyDocument]);
-  const user = userEvent.setup();
-  render(<App />);
-  const example = await screen.findByRole("button", { name: /Which systems need to integrate/ });
-  await user.click(example);
-  expect(screen.getByRole("textbox")).toHaveValue("Which systems need to integrate?");
-  expect(screen.getByRole("textbox")).toHaveFocus();
-  expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/questions"))).toBe(false);
 });
 
 test("shows the backend insufficient-evidence state without inventing sources", async () => {
@@ -225,6 +222,7 @@ test("shows the backend insufficient-evidence state without inventing sources", 
   });
   const user = userEvent.setup();
   render(<App />);
+  await openPreviousDocument();
 
   const input = await screen.findByRole("textbox");
   await user.type(input, "How long are records retained?");
@@ -232,4 +230,26 @@ test("shows the backend insufficient-evidence state without inventing sources", 
 
   expect(await screen.findByRole("heading", { name: "Insufficient evidence" })).toBeVisible();
   expect(screen.getByText("No evidence was cited for this response.")).toBeVisible();
+});
+
+test("starts with upload even when documents exist and can return from a document", async () => {
+  const fetchMock = mockApi([readyDocument]);
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Upload a document" })).toBeVisible();
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Employee_Handbook/ })).not.toBeInTheDocument();
+  await openPreviousDocument();
+  expect(screen.getByRole("heading", { name: readyDocument.filename })).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Upload a document" }));
+  expect(screen.getByRole("heading", { name: "Upload a document" })).toBeVisible();
+  expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);
+});
+
+test("offers PDF selection with an empty library", async () => {
+  mockApi([]);
+  render(<App />);
+  expect(await screen.findByRole("button", { name: "Choose a PDF" })).toBeEnabled();
+  expect(screen.getByText("PDF · Up to 25 MB")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Previous documents" }));
+  expect(screen.getByText("No documents have been added.")).toBeVisible();
 });

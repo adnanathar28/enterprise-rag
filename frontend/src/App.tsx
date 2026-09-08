@@ -10,6 +10,7 @@ import type {
 import { AnswerPanel } from "./components/AnswerPanel";
 import { DocumentSidebar } from "./components/DocumentSidebar";
 import { QuestionComposer } from "./components/QuestionComposer";
+import { UploadPanel } from "./components/UploadPanel";
 
 interface InitialData {
   documents: DocumentSummary[];
@@ -26,6 +27,7 @@ export function App() {
   const [initialData, setInitialData] = useState<InitialData | null>(null);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<ProviderName | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<DocumentQuestionResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,8 +42,6 @@ export function App() {
       .then(([documents, capabilities]) => {
         if (!active) return;
         setInitialData({ documents, capabilities });
-        const firstReady = documents.find((document) => document.indexing.status === "ready");
-        setSelectedDocumentId(firstReady?.document_id ?? documents[0]?.document_id ?? null);
         const preferredProvider =
           capabilities.providers.find((provider) => provider.is_default && provider.configured) ??
           capabilities.providers.find((provider) => provider.configured);
@@ -69,9 +69,11 @@ export function App() {
     [initialData, selectedDocumentId],
   );
 
-  function selectDocument(documentId: string) {
+  function selectDocument(documentId: string | null) {
     activeRequest.current?.abort();
+    activeRequest.current = null;
     setSelectedDocumentId(documentId);
+    setLibraryOpen(false);
     setQuestion("");
     setResult(null);
     setError(null);
@@ -93,10 +95,10 @@ export function App() {
         selectedProvider,
         controller.signal,
       );
-      setResult(response);
+      if (activeRequest.current === controller) setResult(response);
     } catch (requestError) {
       const message = errorMessage(requestError);
-      if (message) setError(message);
+      if (message && activeRequest.current === controller) setError(message);
     } finally {
       if (activeRequest.current === controller) {
         activeRequest.current = null;
@@ -110,18 +112,24 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
-          <span>BRD Knowledge</span>
+          <span>Knowledge</span>
         </div>
-        <div className="workspace-label">Requirements workspace</div>
+        <nav className="workspace-actions" aria-label="Workspace navigation">
+          {selectedDocument && <button type="button" onClick={() => selectDocument(null)}>Upload a document</button>}
+          <button type="button" aria-expanded={libraryOpen} aria-controls="previous-documents"
+            onClick={() => setLibraryOpen(!libraryOpen)}>Previous documents</button>
+        </nav>
       </header>
 
       <div className="workspace-layout">
-        <DocumentSidebar
-          documents={initialData?.documents ?? []}
-          selectedDocumentId={selectedDocumentId}
-          loading={loading}
-          onSelect={selectDocument}
-        />
+        <div id="previous-documents" hidden={!libraryOpen}>
+          <DocumentSidebar
+            documents={initialData?.documents ?? []}
+            selectedDocumentId={selectedDocumentId}
+            loading={loading}
+            onSelect={selectDocument}
+          />
+        </div>
 
         <main className="main-content">
           {error && !initialData ? (
@@ -137,11 +145,7 @@ export function App() {
               <span />
             </div>
           ) : !selectedDocument ? (
-            <div className="empty-workspace">
-              <p className="eyebrow">Document workspace</p>
-              <h1>No documents available</h1>
-              <p>Ingest and index a BRD before asking document-grounded questions.</p>
-            </div>
+            initialData && <UploadPanel capabilities={initialData.capabilities} />
           ) : (
             <div className="document-workspace">
               <header className="document-header">
@@ -150,7 +154,7 @@ export function App() {
                 <div className="document-metadata">
                   <span>{selectedDocument.file_type.toUpperCase()}</span>
                   <span>{selectedDocument.page_count} pages</span>
-                  <span>{selectedDocument.indexing.total_chunk_count} indexed chunks</span>
+                  <span>{selectedDocument.indexing.status === "ready" ? "Ready for questions" : "Search preparation needed"}</span>
                   <span>
                     Added {new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
                       new Date(selectedDocument.created_at),
@@ -189,24 +193,8 @@ export function App() {
                 <AnswerPanel result={result} />
               ) : (
                 !error && selectedDocument.indexing.status === "ready" && (
-                  <section className="answer-placeholder" aria-label="Question suggestions">
-                    <h2>Start with what you need to know</h2>
-                    <p>Ask about requirements, controls, integrations, or business rules.
-                      Answers link back to evidence in this document.</p>
-                    <div className="example-prompts">
-                      {[
-                        "What are the key business requirements?",
-                        "Which systems need to integrate?",
-                        "What controls and approvals are required?",
-                      ].map((prompt) => (
-                        <button key={prompt} type="button" onClick={() => {
-                          setQuestion(prompt);
-                          window.document.getElementById("document-question")?.focus();
-                        }}>
-                          {prompt}<span aria-hidden="true">↗</span>
-                        </button>
-                      ))}
-                    </div>
+                  <section className="answer-placeholder" aria-label="About answers">
+                    <p>Answers are grounded in evidence from the selected document.</p>
                   </section>
                 )
               )}

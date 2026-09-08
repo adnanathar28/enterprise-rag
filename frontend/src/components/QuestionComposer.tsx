@@ -35,8 +35,7 @@ export function QuestionComposer({
 
       {!ready && (
         <p className="readiness-message" role="status">
-          This document must be indexed with the active embedding configuration before it can be
-          queried.
+          This document needs search preparation before you can ask questions.
         </p>
       )}
 
@@ -54,7 +53,7 @@ export function QuestionComposer({
           id="document-question"
           value={question}
           disabled={!ready || submitting}
-          placeholder="Ask a specific question about requirements, controls, rules, or scope…"
+          placeholder="Ask a question about this document…"
           rows={4}
           onChange={(event) => onQuestionChange(event.target.value)}
           onKeyDown={(event) => {

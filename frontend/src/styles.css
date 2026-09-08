@@ -61,10 +61,11 @@ a:focus-visible, summary:focus-visible {
   border-radius: 3px; border-left-width: 5px;
 }
 .workspace-label { color: var(--text-muted); font-size: 12px; }
-.workspace-layout { display: grid; grid-template-columns: 228px minmax(0, 1fr); min-height: calc(100vh - 50px); }
+.workspace-layout { min-height: calc(100vh - 50px); }
 .document-sidebar {
-  position: sticky; top: 50px; height: calc(100vh - 50px);
-  overflow-y: auto; border-right: 1px solid var(--border); background: var(--surface);
+  position: fixed; top: 58px; right: 16px; width: min(360px, calc(100vw - 32px));
+  max-height: calc(100dvh - 74px); z-index: 30; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
 }
 .sidebar-heading {
   display: flex; align-items: center; justify-content: space-between;
@@ -94,10 +95,10 @@ a:focus-visible, summary:focus-visible {
 .sidebar-empty { margin: var(--space-3); color: var(--text-secondary); font-size: 13px; }
 .main-content { min-width: 0; }
 
-/* Bounded outer shell keeps the column near the library on wide displays. */
+/* Center the document workflow; history is secondary navigation. */
 .document-workspace, .fatal-state, .empty-workspace, .workspace-loading {
   width: min(100%, 964px);
-  margin: 0 auto 0 clamp(0px, 1.6vw, 32px);
+  margin: 0 auto;
   padding: var(--space-8) var(--space-8) var(--space-12);
 }
 .document-header { padding-bottom: var(--space-6); border-bottom: 1px solid var(--border); }
@@ -150,14 +151,6 @@ a:focus-visible, summary:focus-visible {
 .answer-placeholder { margin-top: var(--space-8); padding-top: var(--space-6); border-top: 1px solid var(--border); }
 .answer-placeholder h2 { margin: 0; font-size: 15px; font-weight: 500; }
 .answer-placeholder p { max-width: 630px; margin: var(--space-2) 0 var(--space-4); color: var(--text-secondary); }
-.example-prompts { display: grid; gap: var(--space-1); max-width: 560px; }
-.example-prompts button {
-  display: flex; justify-content: space-between; gap: var(--space-4);
-  padding: var(--space-2) 0; border: 0; border-radius: 4px;
-  color: var(--text-secondary); background: transparent; text-align: left; font-size: 13px;
-}
-.example-prompts button:hover { color: var(--text); background: var(--surface); }
-.example-prompts button span { color: var(--text-muted); }
 .query-error {
   display: grid; gap: var(--space-1); margin-top: var(--space-6);
   padding-left: var(--space-4); border-left: 2px solid #a66f6f; color: var(--danger);
@@ -246,14 +239,11 @@ summary:hover { color: var(--text); }
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 @media (max-width: 1250px) {
-  .document-workspace, .fatal-state, .empty-workspace, .workspace-loading { width: 100%; margin-left: 0; }
+  .document-workspace, .fatal-state, .empty-workspace, .workspace-loading { margin-inline: auto; }
 }
 @media (max-width: 800px) {
   .workspace-layout { display: block; }
-  .document-sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
   .sidebar-heading { padding: var(--space-4) var(--space-4) var(--space-2); }
-  .document-list { display: flex; overflow-x: auto; padding-bottom: var(--space-3); }
-  .document-row { flex: 0 0 220px; }
   .document-workspace, .fatal-state, .empty-workspace, .workspace-loading { padding: var(--space-6); }
 }
 @media (max-width: 560px) {
@@ -271,4 +261,35 @@ summary:hover { color: var(--text); }
   .metadata-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
   .technical-details > summary { flex-wrap: wrap; }
   .technical-summary { width: 100%; margin-left: var(--space-6); }
+}
+
+.workspace-actions { display: flex; gap: var(--space-2); }
+.workspace-actions button, .selected-file button {
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-secondary); background: transparent; font-size: 13px;
+}
+.workspace-actions button:hover, .workspace-actions button[aria-expanded="true"],
+.selected-file button:hover { background: var(--surface-hover); color: var(--text); }
+.upload-workspace { width: min(100%, 704px); margin: 0 auto; padding: 64px var(--space-8) var(--space-8); }
+.upload-workspace h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.025em; }
+.upload-intro { margin: var(--space-2) 0 var(--space-8); color: var(--text-secondary); font-size: 15px; }
+.upload-dropzone {
+  display: flex; flex-direction: column; align-items: center; padding: var(--space-12) var(--space-6);
+  border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--surface);
+}
+.upload-dropzone[data-dragging="true"] { border-color: var(--accent); background: var(--surface-hover); }
+.upload-dropzone h2 { margin: 0; font-size: 17px; font-weight: 500; }
+.upload-dropzone p { margin: var(--space-1) 0 var(--space-4); color: var(--text-secondary); }
+.upload-limit { margin-top: var(--space-4); color: var(--text-muted); font-size: 12px; }
+.upload-stage-note { margin: var(--space-4) 0 0; color: var(--text-muted); font-size: 13px; }
+.selected-file { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4) 0; border-bottom: 1px solid var(--border); }
+.selected-file > div { min-width: 0; flex: 1; }
+.selected-file strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.selected-file span { display: block; margin-top: var(--space-1); font-size: 12px; color: var(--text-muted); }
+@media (max-width: 560px) {
+  .upload-workspace { padding: var(--space-8) var(--space-4); }
+  .workspace-actions { gap: var(--space-1); }
+  .workspace-actions button { padding-inline: 6px; font-size: 12px; }
+  .brand { gap: 6px; }
+  .brand-mark { display: none; }
 }

@@ -9,8 +9,8 @@ interface DocumentSidebarProps {
 
 function readinessLabel(document: DocumentSummary): string {
   if (document.indexing.status === "ready") return "Ready";
-  if (document.indexing.status === "needs_reindex") return "Reindex required";
-  return "Not indexed";
+  if (document.indexing.status === "needs_reindex") return "Needs preparation";
+  return "Needs preparation";
 }
 
 function documentMeta(document: DocumentSummary): string {
@@ -28,7 +28,7 @@ export function DocumentSidebar({
   return (
     <aside className="document-sidebar" aria-label="Document library">
       <div className="sidebar-heading">
-        <h2>Documents</h2>
+        <h2>Previous documents</h2>
         <span className="document-count">{documents.length}</span>
       </div>
 

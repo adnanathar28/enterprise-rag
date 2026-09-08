@@ -77,11 +77,15 @@ returns 422 for a failed parse, including its document ID when output was saved.
 
 ## Frontend
 
-The first frontend slice supports existing indexed documents. It provides document
-selection, Gemini/Qwen selection, grounded questions, authoritative sources, and
-collapsed retrieval and generation diagnostics. Connecting the upload/index APIs
-to the frontend is a later phase; documents marked `not_indexed` or `needs_reindex`
-cannot be queried.
+The frontend opens on a PDF selection screen, with existing documents available
+through **Previous documents**. File selection and drag-and-drop are local only
+for now: the UI explicitly indicates that files have not been uploaded. Connecting
+the upload/index APIs is the next slice. File size limits come from the backend
+capabilities endpoint; this screen accepts only PDF when the backend allows it.
+
+Previously indexed documents retain Gemini/Qwen selection, grounded questions,
+authoritative sources, and collapsed retrieval and generation diagnostics.
+Documents marked `not_indexed` or `needs_reindex` cannot be queried.
 
 Keep the API running on `127.0.0.1:8000`, then start the Vite development server:
 
