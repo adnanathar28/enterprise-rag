@@ -3,8 +3,10 @@ from tempfile import TemporaryDirectory
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from brd_knowledge.api.dependencies import (
+    document_indexing_service_dependency,
     document_persistence_service_dependency,
     embedding_provider_dependency,
     file_intake_service_dependency,
@@ -12,10 +14,14 @@ from brd_knowledge.api.dependencies import (
     question_answering_service_dependency,
 )
 from brd_knowledge.core.exceptions import (
+    DocumentIndexingError,
+    DocumentNotFoundError,
+    DocumentNotIndexableError,
     GenerationBlockedError,
     GenerationProviderError,
     InvalidCitationError,
     MalformedGenerationResponse,
+    ParserError,
     PromptBudgetExceeded,
 )
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
@@ -26,6 +32,7 @@ from brd_knowledge.schemas.persisted_document import (
     PersistedParsedDocument,
 )
 from brd_knowledge.schemas.query import DocumentQuestionRequest, DocumentQuestionResponse
+from brd_knowledge.services.document_indexing_service import DocumentIndexingService
 from brd_knowledge.services.document_persistence_service import DocumentPersistenceService
 from brd_knowledge.services.file_intake_service import FileIntakeService
 from brd_knowledge.services.ingestion_service import IngestionService
@@ -80,6 +87,24 @@ def get_document(
             embedding_provider.configuration,
         ),
     )
+
+
+@router.post("/{document_id}/index", response_model=PersistedDocumentSummary)
+def index_document(
+    document_id: str,
+    indexing_service: Annotated[
+        DocumentIndexingService,
+        Depends(document_indexing_service_dependency),
+    ],
+) -> PersistedDocumentSummary:
+    try:
+        return indexing_service.index(document_id)
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DocumentNotIndexableError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DocumentIndexingError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/{document_id}/questions", response_model=DocumentQuestionResponse)
@@ -166,15 +191,46 @@ async def ingest_document(
         with TemporaryDirectory() as temporary_directory:
             temporary_path = Path(temporary_directory) / "upload"
             await _write_upload_to_path(file, temporary_path)
-            stored_file = file_intake_service.store(
+            summary = await run_in_threadpool(
+                _store_parse_and_persist,
                 temporary_path,
-                original_filename=file.filename,
+                file.filename,
+                parse_options,
+                file_intake_service,
+                ingestion_service,
+                document_persistence_service,
             )
-        result = ingestion_service.ingest_with_result(stored_file.stored_path, parse_options)
-        document_persistence_service.save_ingestion_result(stored_file, result)
+    except ParserError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="The document could not be parsed.",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if summary.parse_status not in {"success", "partial_success"}:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Document parsing did not complete successfully.",
+                "document_id": summary.document_id,
+                "parse_status": summary.parse_status,
+            },
+        )
+    return summary
+
+
+def _store_parse_and_persist(
+    temporary_path: Path,
+    filename: str | None,
+    parse_options: ParseOptions,
+    file_intake_service: FileIntakeService,
+    ingestion_service: IngestionService,
+    document_persistence_service: DocumentPersistenceService,
+) -> IngestionSummary:
+    stored_file = file_intake_service.store(temporary_path, original_filename=filename)
+    result = ingestion_service.ingest_with_result(stored_file.stored_path, parse_options)
+    document_persistence_service.save_ingestion_result(stored_file, result)
     summary = IngestionSummary.from_ingestion_result(result)
     return summary.model_copy(update={"filename": stored_file.original_filename})
 

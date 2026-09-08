@@ -54,12 +54,34 @@ Health check:
 Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
+## Upload and prepare a document
+
+Uploads currently accept PDF files. The backend uses two separate requests:
+
+1. `POST /documents/ingest` with multipart `file` parses and persists the document.
+   Keep the returned `document_id`.
+2. `POST /documents/{document_id}/index` prepares that saved document for search
+   using the existing structure-aware chunker and embedding synchronization.
+   It returns the existing document summary, including `indexing.status`.
+
+Once the status is `ready`, use `POST /documents/{document_id}/questions`.
+These requests wait for completion; there is no background job or progress API.
+Preparing search requires the configured local GTE embedding model and database.
+
+Indexing returns 404 for a missing document, 422 for invalid/failed/empty parsing
+output, and 503 for a preparation failure. On a preparation failure, the parsed
+document remains saved: retry the index endpoint without uploading again.
+Repeating indexing skips unchanged embeddings. Partial parses may be indexed;
+their `partial_success` parse status remains visible in the summary. Ingestion
+returns 422 for a failed parse, including its document ID when output was saved.
+
 ## Frontend
 
 The first frontend slice supports existing indexed documents. It provides document
 selection, Gemini/Qwen selection, grounded questions, authoritative sources, and
-collapsed retrieval and generation diagnostics. Upload-to-index orchestration is a
-later phase; documents marked `not_indexed` or `needs_reindex` cannot be queried.
+collapsed retrieval and generation diagnostics. Connecting the upload/index APIs
+to the frontend is a later phase; documents marked `not_indexed` or `needs_reindex`
+cannot be queried.
 
 Keep the API running on `127.0.0.1:8000`, then start the Vite development server:
 

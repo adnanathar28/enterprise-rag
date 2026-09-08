@@ -6,6 +6,18 @@ class ParserError(BRDKnowledgeError):
     """Raised when a document parser cannot process a file."""
 
 
+class DocumentNotFoundError(BRDKnowledgeError):
+    """Raised when indexing targets a document that is not persisted."""
+
+
+class DocumentNotIndexableError(BRDKnowledgeError):
+    """Raised when saved parsing output cannot produce searchable evidence."""
+
+
+class DocumentIndexingError(BRDKnowledgeError):
+    """Raised when search preparation fails; the saved document can be retried."""
+
+
 class GenerationError(BRDKnowledgeError):
     """Base exception for grounded answer generation failures."""
 

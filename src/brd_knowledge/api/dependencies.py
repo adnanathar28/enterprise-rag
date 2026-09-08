@@ -9,6 +9,8 @@ from brd_knowledge.database.session import get_db_session
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
 from brd_knowledge.retrieval import PgVectorRetriever
+from brd_knowledge.services.chunk_embedding_service import ChunkEmbeddingService
+from brd_knowledge.services.document_indexing_service import DocumentIndexingService
 from brd_knowledge.services.document_persistence_service import DocumentPersistenceService
 from brd_knowledge.services.file_intake_service import FileIntakeService
 from brd_knowledge.services.ingestion_service import IngestionService
@@ -62,4 +64,18 @@ def question_answering_service_dependency(
     return QuestionAnsweringService(
         PgVectorRetriever(session, embedding_provider),
         get_settings(),
+    )
+
+
+def document_indexing_service_dependency(
+    session: Annotated[Session, Depends(get_db_session)],
+    embedding_provider: Annotated[
+        GteModernBertEmbeddingProvider,
+        Depends(embedding_provider_dependency),
+    ],
+) -> DocumentIndexingService:
+    return DocumentIndexingService(
+        DocumentPersistenceService(session),
+        ChunkEmbeddingService(session, embedding_provider),
+        embedding_provider.configuration,
     )
