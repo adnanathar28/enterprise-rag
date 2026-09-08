@@ -28,7 +28,6 @@ export function QuestionComposer({
     <section className="question-section" aria-labelledby="question-heading">
       <div className="section-heading-row">
         <div>
-          <p className="eyebrow">Question</p>
           <h2 id="question-heading">Ask about this document</h2>
         </div>
         <span className="keyboard-hint">⌘ ↵ to submit</span>
@@ -67,7 +66,7 @@ export function QuestionComposer({
         />
         <div className="composer-footer">
           <label className="provider-control">
-            <span>Model provider</span>
+            <span>Provider</span>
             <select
               aria-label="Model provider"
               value={selectedProvider ?? ""}

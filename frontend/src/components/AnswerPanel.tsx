@@ -47,9 +47,12 @@ export function AnswerPanel({ result }: AnswerPanelProps) {
   return (
     <div className="result-stack" aria-live="polite">
       <section className="answer-section" aria-labelledby="answer-heading">
+        <div className="answered-question">
+          <span>Question</span>
+          <p>{result.question}</p>
+        </div>
         <div className="answer-heading-row">
           <div>
-            <p className="eyebrow">Answer</p>
             <h2 id="answer-heading">
               {result.answer.insufficient_evidence ? "Insufficient evidence" : "Grounded response"}
             </h2>
@@ -62,8 +65,7 @@ export function AnswerPanel({ result }: AnswerPanelProps) {
       <section className="sources-section" aria-labelledby="sources-heading">
         <div className="section-heading-row">
           <div>
-            <p className="eyebrow">Sources</p>
-            <h2 id="sources-heading">Authoritative evidence</h2>
+            <h2 id="sources-heading">Sources</h2>
           </div>
           <span className="source-count">
             {result.answer.citations.length} {result.answer.citations.length === 1 ? "source" : "sources"}
@@ -88,12 +90,22 @@ export function AnswerPanel({ result }: AnswerPanelProps) {
                       <h3>{sectionLabel(citation, evidence)}</h3>
                       <span>{pageLabel(citation.page_start, citation.page_end)}</span>
                     </div>
-                    {evidence && <p>{evidence.text}</p>}
-                    <div className="source-meta">
-                      <span>{evidence?.content_type === "table" ? "Table" : "Prose"}</span>
-                      {evidence && <span>{Math.round(evidence.similarity * 100)}% similarity</span>}
-                      <span className="mono">{citation.chunk_id}</span>
-                    </div>
+                    {evidence && <p className="source-excerpt">{evidence.text}</p>}
+                    <details className="source-expansion">
+                      <summary>View full evidence & provenance</summary>
+                      {evidence && <pre className="evidence-text">{evidence.text}</pre>}
+                      <dl className="source-metadata">
+                        <div><dt>Document</dt><dd>{citation.document_id}</dd></div>
+                        <div><dt>Chunk</dt><dd>{citation.chunk_id}</dd></div>
+                        <div><dt>Source blocks</dt><dd>{citation.source_block_ids.join(", ") || "None"}</dd></div>
+                        <div><dt>Source tables</dt><dd>{citation.source_table_ids.join(", ") || "None"}</dd></div>
+                      </dl>
+                      {citation.quality_notes.length > 0 && <p>{citation.quality_notes.join(" · ")}</p>}
+                      <details className="provenance-details">
+                        <summary>Provenance records</summary>
+                        <pre className="evidence-text">{JSON.stringify(citation.provenance, null, 2)}</pre>
+                      </details>
+                    </details>
                   </div>
                 </article>
               );
@@ -116,7 +128,7 @@ function TechnicalDetails({ result }: AnswerPanelProps) {
   return (
     <details className="technical-details">
       <summary>
-        <span>Technical details</span>
+        <span>Retrieved evidence & technical details</span>
         <span className="technical-summary">
           {result.retrieved_chunks.length} retrieved · {result.context.evidence.length} included
         </span>
@@ -169,12 +181,21 @@ function TechnicalDetails({ result }: AnswerPanelProps) {
           ))}
         </div>
 
+        <div className="retrieved-excerpts">
+          {result.retrieved_chunks.map((chunk) => (
+            <details key={chunk.chunk_id}>
+              <summary>#{chunk.rank} · {chunk.section_title ?? "Untitled section"} · View chunk</summary>
+              <pre className="evidence-text">{chunk.text}</pre>
+              <p className="mono">{chunk.chunk_id}</p>
+            </details>
+          ))}
+        </div>
+
         {result.context.exclusions.length > 0 && (
-          <p className="exclusions-note">
-            {result.context.exclusions.length} retrieved chunk
-            {result.context.exclusions.length === 1 ? " was" : "s were"} excluded during context
-            construction.
-          </p>
+          <details className="exclusions-note">
+            <summary>{result.context.exclusions.length} excluded from context</summary>
+            <pre className="evidence-text">{JSON.stringify(result.context.exclusions, null, 2)}</pre>
+          </details>
         )}
       </div>
     </details>

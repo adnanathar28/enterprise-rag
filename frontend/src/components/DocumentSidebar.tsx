@@ -8,7 +8,7 @@ interface DocumentSidebarProps {
 }
 
 function readinessLabel(document: DocumentSummary): string {
-  if (document.indexing.status === "ready") return "Ready to query";
+  if (document.indexing.status === "ready") return "Ready";
   if (document.indexing.status === "needs_reindex") return "Reindex required";
   return "Not indexed";
 }
@@ -28,7 +28,7 @@ export function DocumentSidebar({
   return (
     <aside className="document-sidebar" aria-label="Document library">
       <div className="sidebar-heading">
-        <p className="eyebrow">Documents</p>
+        <h2>Documents</h2>
         <span className="document-count">{documents.length}</span>
       </div>
 
@@ -51,13 +51,16 @@ export function DocumentSidebar({
                 key={document.document_id}
                 type="button"
                 aria-pressed={selected}
+                title={document.filename}
                 onClick={() => onSelect(document.document_id)}
               >
                 <span className="document-name">{document.filename}</span>
-                <span className="document-subline">{documentMeta(document)}</span>
-                <span className="readiness" data-ready={document.indexing.status === "ready"}>
-                  <span className="status-dot" />
-                  {readinessLabel(document)}
+                <span className="document-row-meta">
+                  <span className="document-subline">{documentMeta(document)}</span>
+                  <span className="readiness" data-ready={document.indexing.status === "ready"}>
+                    <span className="status-dot" />
+                    {readinessLabel(document)}
+                  </span>
                 </span>
               </button>
             );

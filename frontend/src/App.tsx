@@ -145,7 +145,7 @@ export function App() {
           ) : (
             <div className="document-workspace">
               <header className="document-header">
-                <p className="eyebrow">Selected document</p>
+                <p className="eyebrow">Document workspace</p>
                 <h1>{selectedDocument.filename}</h1>
                 <div className="document-metadata">
                   <span>{selectedDocument.file_type.toUpperCase()}</span>
@@ -188,9 +188,27 @@ export function App() {
               ) : result ? (
                 <AnswerPanel result={result} />
               ) : (
-                <div className="answer-placeholder">
-                  <p>Answers will appear here with resolved source evidence.</p>
-                </div>
+                !error && selectedDocument.indexing.status === "ready" && (
+                  <section className="answer-placeholder" aria-label="Question suggestions">
+                    <h2>Start with what you need to know</h2>
+                    <p>Ask about requirements, controls, integrations, or business rules.
+                      Answers link back to evidence in this document.</p>
+                    <div className="example-prompts">
+                      {[
+                        "What are the key business requirements?",
+                        "Which systems need to integrate?",
+                        "What controls and approvals are required?",
+                      ].map((prompt) => (
+                        <button key={prompt} type="button" onClick={() => {
+                          setQuestion(prompt);
+                          window.document.getElementById("document-question")?.focus();
+                        }}>
+                          {prompt}<span aria-hidden="true">↗</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )
               )}
             </div>
           )}

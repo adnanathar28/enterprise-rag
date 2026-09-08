@@ -171,7 +171,12 @@ test("asks a document-scoped question and renders authoritative evidence", async
   const source = screen.getByRole("article");
   expect(within(source).getByText("Controls / Audit")).toBeVisible();
   expect(within(source).getByText("Page 7")).toBeVisible();
-  expect(within(source).getByText(/complete audit records/)).toBeVisible();
+  expect(within(source).getByText(/complete audit records/, { selector: "p" })).toBeVisible();
+  const fullEvidence = within(source).getByText(/complete audit records/, { selector: "pre" });
+  expect(fullEvidence).not.toBeVisible();
+  await user.click(within(source).getByText("View full evidence & provenance"));
+  expect(fullEvidence).toBeVisible();
+  expect(within(source).getByText("block-1")).toBeVisible();
 
   const questionRequest = fetchMock.mock.calls.find(([url]) =>
     String(url).endsWith("/documents/doc-1/questions"),
@@ -194,6 +199,17 @@ test("keeps question controls disabled for an unindexed document", async () => {
   expect(await screen.findByText(/must be indexed with the active embedding/)).toBeVisible();
   expect(screen.getByRole("button", { name: "Ask question" })).toBeDisabled();
   expect(screen.getByRole("textbox")).toBeDisabled();
+});
+
+test("example questions fill the composer without calling generation", async () => {
+  const fetchMock = mockApi([readyDocument]);
+  const user = userEvent.setup();
+  render(<App />);
+  const example = await screen.findByRole("button", { name: /Which systems need to integrate/ });
+  await user.click(example);
+  expect(screen.getByRole("textbox")).toHaveValue("Which systems need to integrate?");
+  expect(screen.getByRole("textbox")).toHaveFocus();
+  expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/questions"))).toBe(false);
 });
 
 test("shows the backend insufficient-evidence state without inventing sources", async () => {
