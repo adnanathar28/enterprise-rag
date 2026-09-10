@@ -31,17 +31,17 @@ const readyDocument: DocumentSummary = {
 const capabilities: ApplicationCapabilities = {
   providers: [
     {
-      provider: "local_qwen",
-      label: "Local Qwen",
-      model: "qwen3:8b",
+      provider: "gemini",
+      label: "Gemini",
+      model: "gemini-3.1-flash-lite",
       configured: true,
       is_default: true,
     },
     {
-      provider: "gemini",
-      label: "Gemini",
-      model: "gemini-3.1-flash-lite",
-      configured: false,
+      provider: "local_qwen",
+      label: "Local Qwen",
+      model: "qwen3:8b",
+      configured: true,
       is_default: false,
     },
   ],
@@ -72,14 +72,14 @@ const groundedResponse: DocumentQuestionResponse = {
     ],
     insufficient_evidence: false,
     metadata: {
-      provider: "ollama",
-      model: "qwen3:8b",
+      provider: "gemini",
+      model: "gemini-3.1-flash-lite",
       revision: "revision-1",
       max_output_tokens: 1024,
       prompt_tokens: 812,
       output_tokens: 24,
       provider_request_id: null,
-      model_version: "qwen3:8b",
+      model_version: "gemini-3.1-flash-lite",
       thinking_tokens: 0,
     },
   },
@@ -208,7 +208,7 @@ test("asks a document-scoped question and renders authoritative evidence", async
   );
   expect(JSON.parse(String(questionRequest?.[1]?.body))).toEqual({
     question: "What is the audit requirement?",
-    provider: "local_qwen",
+    provider: "gemini",
   });
 });
 

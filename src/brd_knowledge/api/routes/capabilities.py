@@ -21,18 +21,18 @@ def get_capabilities(
     return ApplicationCapabilities(
         providers=[
             ProviderCapability(
-                provider="local_qwen",
-                label="Local Qwen",
-                model=settings.local_qwen_model,
-                configured=True,
-                is_default=settings.llm_provider == "local_qwen",
-            ),
-            ProviderCapability(
                 provider="gemini",
                 label="Gemini",
                 model=settings.gemini_model,
                 configured=gemini_configured,
                 is_default=settings.llm_provider == "gemini",
+            ),
+            ProviderCapability(
+                provider="local_qwen",
+                label="Local Qwen",
+                model=settings.local_qwen_model,
+                configured=True,
+                is_default=settings.llm_provider == "local_qwen",
             ),
         ],
         allowed_document_extensions=sorted(settings.allowed_document_extensions),

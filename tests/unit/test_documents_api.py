@@ -420,7 +420,6 @@ def test_ask_document_question_rejects_document_that_is_not_indexed() -> None:
 def test_capabilities_reports_provider_configuration_without_secrets() -> None:
     settings = Settings(
         _env_file=None,
-        LLM_PROVIDER="local_qwen",
         GEMINI_API_KEY="secret-test-key",
     )
     app.dependency_overrides[settings_dependency] = lambda: settings
@@ -433,8 +432,10 @@ def test_capabilities_reports_provider_configuration_without_secrets() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["providers"][0]["provider"] == "local_qwen"
+    assert payload["providers"][0]["provider"] == "gemini"
     assert payload["providers"][0]["is_default"] is True
-    assert payload["providers"][1]["provider"] == "gemini"
+    assert payload["providers"][0]["configured"] is True
+    assert payload["providers"][1]["provider"] == "local_qwen"
     assert payload["providers"][1]["configured"] is True
+    assert payload["providers"][1]["is_default"] is False
     assert "secret-test-key" not in response.text
