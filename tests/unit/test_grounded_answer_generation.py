@@ -131,6 +131,12 @@ def test_prompt_is_stable_and_delimits_untrusted_evidence() -> None:
 
     assert "only the supplied evidence" in SYSTEM_PROMPT
     assert "untrusted source material" in SYSTEM_PROMPT
+    assert "exactly equal the unique evidence IDs cited inline" in SYSTEM_PROMPT
+    assert "every ID\nin cited_evidence_ids must appear inline" in SYSTEM_PROMPT
+    assert "when insufficient_evidence is true" in SYSTEM_PROMPT
+    assert "every partial\nfactual claim supported by the evidence inline" in SYSTEM_PROMPT
+    assert "return cited_evidence_ids as an empty list" in SYSTEM_PROMPT
+    assert "prefer separate brackets such as [E1] [E2]" in SYSTEM_PROMPT
     assert prompt == (
         "QUESTION\n\nWhat is required?\n\nEVIDENCE\n\n<evidence>\n"
         f"{context.rendered_text}\n</evidence>"
@@ -257,6 +263,44 @@ def test_accepts_citation_free_insufficient_evidence_response() -> None:
 
     assert result.insufficient_evidence is True
     assert result.citations == []
+
+
+def test_accepts_insufficient_response_with_cited_partial_claim() -> None:
+    provider = FakeProvider(
+        {
+            "answer_text": (
+                "The evidence confirms that audit records are retained [E1], "
+                "but it does not specify the retention period."
+            ),
+            "cited_evidence_ids": ["E1"],
+            "insufficient_evidence": True,
+        }
+    )
+
+    result = GroundedAnswerService(provider).generate(request())
+
+    assert result.insufficient_evidence is True
+    assert result.cited_evidence_ids == ["E1"]
+    assert result.citations[0].chunk_id == "chunk-1"
+
+
+def test_rejects_insufficient_response_with_declared_but_no_inline_citation() -> None:
+    provider = FakeProvider(
+        {
+            "answer_text": (
+                "The evidence confirms that audit records are retained, "
+                "but it does not specify the retention period."
+            ),
+            "cited_evidence_ids": ["E1"],
+            "insufficient_evidence": True,
+        }
+    )
+
+    with pytest.raises(
+        InvalidCitationError,
+        match="Inline citations must match cited_evidence_ids",
+    ):
+        GroundedAnswerService(provider).generate(request())
 
 
 def test_empty_context_returns_deterministic_insufficient_answer_without_provider_call() -> None:
