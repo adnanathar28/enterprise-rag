@@ -72,9 +72,12 @@ class GroundedAnswerService:
                 "The provider response did not match the grounded answer schema."
             ) from exc
 
-        cited_ids, citations = validate_and_resolve_citations(payload, request.context)
+        answer_text, cited_ids, citations = validate_and_resolve_citations(
+            payload,
+            request.context,
+        )
         return GroundedAnswer(
-            answer_text=payload.answer_text,
+            answer_text=answer_text,
             cited_evidence_ids=cited_ids,
             citations=citations,
             insufficient_evidence=payload.insufficient_evidence,

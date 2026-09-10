@@ -4,15 +4,19 @@ from brd_knowledge.core.exceptions import InvalidCitationError
 from brd_knowledge.schemas.context import ConstructedContext, ContextEvidence
 from brd_knowledge.schemas.generation import ModelAnswerPayload, ResolvedCitation
 
-CITATION_TOKEN_PATTERN = re.compile(r"\[([A-Za-z][A-Za-z0-9_-]*)\]")
+BRACKETED_TEXT_PATTERN = re.compile(r"\[(\s*[A-Za-z][^\[\]]*)\]")
+CITATION_GROUP_PATTERN = re.compile(
+    r"\s*([A-Za-z][A-Za-z0-9_-]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_-]*)*)\s*"
+)
 
 
 def validate_and_resolve_citations(
     payload: ModelAnswerPayload,
     context: ConstructedContext,
-) -> tuple[list[str], list[ResolvedCitation]]:
+) -> tuple[str, list[str], list[ResolvedCitation]]:
     evidence_by_id = {item.evidence_id: item for item in context.evidence}
-    inline_ids = _deduplicate(CITATION_TOKEN_PATTERN.findall(payload.answer_text))
+    normalized_answer_text, inline_ids = _normalize_inline_citations(payload.answer_text)
+    inline_ids = _deduplicate(inline_ids)
     declared_ids = _deduplicate(payload.cited_evidence_ids)
     unknown_ids = [
         evidence_id
@@ -29,7 +33,27 @@ def validate_and_resolve_citations(
         )
     if not payload.insufficient_evidence and not inline_ids:
         raise InvalidCitationError("A sufficient answer must cite at least one evidence item.")
-    return inline_ids, [_resolve(evidence_by_id[evidence_id]) for evidence_id in inline_ids]
+    return (
+        normalized_answer_text,
+        inline_ids,
+        [_resolve(evidence_by_id[evidence_id]) for evidence_id in inline_ids],
+    )
+
+
+def _normalize_inline_citations(answer_text: str) -> tuple[str, list[str]]:
+    inline_ids: list[str] = []
+
+    def normalize_group(match: re.Match[str]) -> str:
+        content = match.group(1)
+        group = CITATION_GROUP_PATTERN.fullmatch(content)
+        if group is None:
+            raise InvalidCitationError(f"Malformed inline citation group: [{content}]")
+        evidence_ids = [item.strip() for item in group.group(1).split(",")]
+        inline_ids.extend(evidence_ids)
+        return " ".join(f"[{evidence_id}]" for evidence_id in evidence_ids)
+
+    normalized = BRACKETED_TEXT_PATTERN.sub(normalize_group, answer_text)
+    return normalized, inline_ids
 
 
 def _deduplicate(values: list[str]) -> list[str]:

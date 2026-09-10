@@ -6,7 +6,11 @@ from collections.abc import Iterator
 import httpx
 import pytest
 from pydantic import SecretStr
-from tests.unit.test_grounded_answer_generation import empty_context, request
+from tests.unit.test_grounded_answer_generation import (
+    context_with_two_evidence,
+    empty_context,
+    request,
+)
 
 from brd_knowledge.core.exceptions import (
     GenerationBlockedError,
@@ -116,6 +120,37 @@ def test_service_and_wire_requests(gemini: tuple[GeminiLLMProvider, GeminiTransp
     assert config["thinkingConfig"]["thinking_level"].lower() == "minimal"
     assert "tools" not in generated
     assert generation.extensions["timeout"]["read"] == 60.0
+
+
+def test_grouped_citations_from_gemini_are_normalized(
+    gemini: tuple[GeminiLLMProvider, GeminiTransport],
+) -> None:
+    provider, transport = gemini
+    transport.body = {
+        "candidates": [
+            {
+                "finishReason": "STOP",
+                "content": {
+                    "parts": [
+                        {
+                            "text": json.dumps(
+                                {
+                                    "answer_text": "Supported by both sources [E1, E2].",
+                                    "cited_evidence_ids": ["E1", "E2"],
+                                    "insufficient_evidence": False,
+                                }
+                            )
+                        }
+                    ]
+                },
+            }
+        ]
+    }
+
+    result = GroundedAnswerService(provider).generate(request(context_with_two_evidence()))
+
+    assert result.answer_text == "Supported by both sources [E1] [E2]."
+    assert result.cited_evidence_ids == ["E1", "E2"]
 
 
 @pytest.mark.parametrize("status", [400, 401, 429, 500, 503])

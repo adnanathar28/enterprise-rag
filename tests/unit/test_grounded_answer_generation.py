@@ -98,6 +98,18 @@ def constructed_context() -> ConstructedContext:
     )
 
 
+def context_with_two_evidence() -> ConstructedContext:
+    context = constructed_context()
+    second = context.evidence[0].model_copy(
+        update={
+            "evidence_id": "E2",
+            "chunk_id": "chunk-2",
+            "source_block_ids": ["block-2"],
+        }
+    )
+    return context.model_copy(update={"evidence": [*context.evidence, second]})
+
+
 def empty_context() -> ConstructedContext:
     return ContextBuilder().build(
         ContextBuildRequest(retrieved_chunks=[], max_characters=5_000)
@@ -156,6 +168,48 @@ def test_duplicate_citations_are_deduplicated_in_first_use_order() -> None:
 
     assert result.cited_evidence_ids == ["E1"]
     assert len(result.citations) == 1
+
+
+def test_accepts_grouped_citations_and_normalizes_them_for_display() -> None:
+    provider = FakeProvider(
+        {
+            "answer_text": "The claim has two sources [E1, E2].",
+            "cited_evidence_ids": ["E1", "E2"],
+            "insufficient_evidence": False,
+        }
+    )
+
+    result = GroundedAnswerService(provider).generate(request(context_with_two_evidence()))
+
+    assert result.answer_text == "The claim has two sources [E1] [E2]."
+    assert result.cited_evidence_ids == ["E1", "E2"]
+    assert [citation.chunk_id for citation in result.citations] == ["chunk-1", "chunk-2"]
+
+
+def test_rejects_unknown_evidence_inside_grouped_citation() -> None:
+    provider = FakeProvider(
+        {
+            "answer_text": "The claim has two sources [E1, E99].",
+            "cited_evidence_ids": ["E1", "E99"],
+            "insufficient_evidence": False,
+        }
+    )
+
+    with pytest.raises(InvalidCitationError, match="unknown evidence IDs: E99"):
+        GroundedAnswerService(provider).generate(request(context_with_two_evidence()))
+
+
+def test_rejects_malformed_grouped_citation() -> None:
+    provider = FakeProvider(
+        {
+            "answer_text": "The claim has malformed sources [E1; E2].",
+            "cited_evidence_ids": ["E1", "E2"],
+            "insufficient_evidence": False,
+        }
+    )
+
+    with pytest.raises(InvalidCitationError, match="Malformed inline citation group"):
+        GroundedAnswerService(provider).generate(request(context_with_two_evidence()))
 
 
 @pytest.mark.parametrize(
