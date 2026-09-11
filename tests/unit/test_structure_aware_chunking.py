@@ -89,6 +89,27 @@ def document_with_sections(sections: list[DocumentSection]) -> ParsedDocument:
     )
 
 
+def render_table(rows: list[TableRow], cells: list[TableCell]) -> str:
+    parsed_table = ParsedTable(
+        table_id="table-spans",
+        page_number=1,
+        page_numbers=[1],
+        reading_order_index=0,
+        rows=rows,
+        cells=cells,
+        source=SourceReference(document_id="doc-1", page_number=1, table_id="table-spans"),
+        native_text_coverage=1.0,
+    )
+    section = DocumentSection(
+        section_id="section-spans",
+        title="Table Spans",
+        level=1,
+        page_start=1,
+        tables=[parsed_table],
+    )
+    return StructureAwareChunker().chunk(document_with_sections([section]))[0].text
+
+
 def test_combines_prose_within_section_and_preserves_provenance() -> None:
     heading = block("heading-1", "1) Scope", 1, 0, "section_header")
     first = block("block-1", "The system tracks inventory.", 1, 1)
@@ -185,6 +206,96 @@ def test_healthy_table_uses_structured_rows() -> None:
     assert chunk.text.endswith("Field | Value\nPriority | Must")
     assert "Ignored native text" not in chunk.text
     assert chunk.source_table_ids == ["table-1"]
+
+
+def test_explicit_row_span_repeats_label_in_covered_row() -> None:
+    model = TableCell(row_index=1, column_index=0, text="Model A", row_span=2)
+    cells = [
+        TableCell(row_index=0, column_index=0, text="Model", is_header=True),
+        TableCell(row_index=0, column_index=1, text="Approach", is_header=True),
+        TableCell(row_index=0, column_index=2, text="Input", is_header=True),
+        model,
+        TableCell(row_index=1, column_index=1, text="GraphRAG"),
+        TableCell(row_index=1, column_index=2, text="100"),
+        TableCell(row_index=2, column_index=1, text="VersionRAG"),
+        TableCell(row_index=2, column_index=2, text="50"),
+    ]
+    rows = [
+        TableRow(row_index=0, cells=cells[:3]),
+        TableRow(row_index=1, cells=cells[3:6]),
+        TableRow(row_index=2, cells=cells[6:]),
+    ]
+
+    rendered = render_table(rows, cells)
+
+    assert rendered.endswith(
+        "Model | Approach | Input\n"
+        "Model A | GraphRAG | 100\n"
+        "Model A | VersionRAG | 50"
+    )
+
+
+def test_independent_row_spans_do_not_leak_between_groups() -> None:
+    model_a = TableCell(row_index=0, column_index=0, text="Model A", row_span=2)
+    graph_a = TableCell(row_index=0, column_index=1, text="GraphRAG")
+    version_a = TableCell(row_index=1, column_index=1, text="VersionRAG")
+    model_b = TableCell(row_index=2, column_index=0, text="Model B", row_span=2)
+    graph_b = TableCell(row_index=2, column_index=1, text="GraphRAG")
+    version_b = TableCell(row_index=3, column_index=1, text="VersionRAG")
+    cells = [model_a, graph_a, version_a, model_b, graph_b, version_b]
+    rows = [
+        TableRow(row_index=0, cells=[model_a, graph_a]),
+        TableRow(row_index=1, cells=[version_a]),
+        TableRow(row_index=2, cells=[model_b, graph_b]),
+        TableRow(row_index=3, cells=[version_b]),
+    ]
+
+    rendered = render_table(rows, cells)
+
+    assert rendered.endswith(
+        "Model A | GraphRAG\n"
+        "Model A | VersionRAG\n"
+        "Model B | GraphRAG\n"
+        "Model B | VersionRAG"
+    )
+
+
+def test_explicit_column_span_repeats_merged_header_across_covered_columns() -> None:
+    name = TableCell(row_index=0, column_index=0, text="Name", is_header=True)
+    dimensions = TableCell(
+        row_index=0,
+        column_index=1,
+        text="Dimensions",
+        column_span=2,
+        is_header=True,
+    )
+    small = TableCell(row_index=1, column_index=0, text="Small")
+    width = TableCell(row_index=1, column_index=1, text="20")
+    height = TableCell(row_index=1, column_index=2, text="15")
+    cells = [name, dimensions, small, width, height]
+    rows = [
+        TableRow(row_index=0, cells=[name, dimensions]),
+        TableRow(row_index=1, cells=[small, width, height]),
+    ]
+
+    rendered = render_table(rows, cells)
+
+    assert rendered.endswith("Name | Dimensions | Dimensions\nSmall | 20 | 15")
+
+
+def test_genuinely_empty_cell_is_not_forward_filled_without_a_span() -> None:
+    label = TableCell(row_index=0, column_index=0, text="Label")
+    first_value = TableCell(row_index=0, column_index=1, text="First")
+    second_value = TableCell(row_index=1, column_index=1, text="Second")
+    cells = [label, first_value, second_value]
+    rows = [
+        TableRow(row_index=0, cells=[label, first_value]),
+        TableRow(row_index=1, cells=[second_value]),
+    ]
+
+    rendered = render_table(rows, cells)
+
+    assert rendered.endswith("Label | First\n | Second")
 
 
 def test_flagged_table_uses_native_text_and_carries_quality_warning() -> None:

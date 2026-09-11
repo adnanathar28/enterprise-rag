@@ -38,6 +38,7 @@ Thumbs.db
 data/samples/*
 data/parsed/*
 data/outputs/*
+data/source_files/*
 !data/samples/.gitkeep
 !data/parsed/.gitkeep
 !data/outputs/.gitkeep

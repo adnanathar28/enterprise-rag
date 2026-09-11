@@ -8,7 +8,7 @@ from brd_knowledge.schemas.chunk import Chunk, ChunkContentType
 from brd_knowledge.schemas.document import DocumentBlock, ParsedDocument
 from brd_knowledge.schemas.section import DocumentSection
 from brd_knowledge.schemas.source import SourceReference
-from brd_knowledge.schemas.table import ParsedTable
+from brd_knowledge.schemas.table import ParsedTable, TableCell
 
 ChunkableItem = DocumentBlock | ParsedTable
 
@@ -295,10 +295,44 @@ class StructureAwareChunker:
         return [text[start : start + limit] for start in range(0, len(text), limit)]
 
     def _render_structured_table(self, table: ParsedTable) -> str:
+        ordered_rows = sorted(table.rows, key=lambda item: item.row_index)
+        if not ordered_rows:
+            return ""
+
+        cells_by_row: dict[int, dict[int, TableCell]] = {
+            row.row_index: {} for row in ordered_rows
+        }
+        max_columns = 0
+        for row in ordered_rows:
+            for cell in sorted(row.cells, key=lambda item: item.column_index):
+                max_columns = max(max_columns, cell.column_index + cell.column_span)
+                for column_offset in range(cell.column_span):
+                    cells_by_row[row.row_index][cell.column_index + column_offset] = cell
+
+        row_indexes = set(cells_by_row)
+        for row in ordered_rows:
+            for cell in row.cells:
+                for row_offset in range(1, cell.row_span):
+                    target_row_index = cell.row_index + row_offset
+                    if target_row_index not in row_indexes:
+                        continue
+                    for column_offset in range(cell.column_span):
+                        cells_by_row[target_row_index].setdefault(
+                            cell.column_index + column_offset,
+                            cell,
+                        )
+
         lines = []
-        for row in sorted(table.rows, key=lambda item: item.row_index):
-            cells = sorted(row.cells, key=lambda cell: cell.column_index)
-            lines.append(" | ".join(" ".join(cell.text.split()) for cell in cells))
+        for row in ordered_rows:
+            cells = cells_by_row[row.row_index]
+            lines.append(
+                " | ".join(
+                    " ".join(cells[column_index].text.split())
+                    if column_index in cells
+                    else ""
+                    for column_index in range(max_columns)
+                )
+            )
         return "\n".join(lines)
 
     def _context_prefix(self, section_path: Sequence[str]) -> str:
