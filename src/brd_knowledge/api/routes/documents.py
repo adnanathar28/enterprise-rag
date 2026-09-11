@@ -23,6 +23,7 @@ from brd_knowledge.core.exceptions import (
     MalformedGenerationResponse,
     ParserError,
     PromptBudgetExceeded,
+    RetrievalRerankingError,
 )
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
 from brd_knowledge.parsing.options import ParseOptions
@@ -139,6 +140,11 @@ def ask_document_question(
         return question_service.answer(document_id, request)
     except PromptBudgetExceeded as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except RetrievalRerankingError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Evidence reranking is temporarily unavailable.",
+        ) from exc
     except GenerationBlockedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (InvalidCitationError, MalformedGenerationResponse) as exc:

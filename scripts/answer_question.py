@@ -7,11 +7,15 @@ import sys
 from pydantic import ValidationError
 
 from brd_knowledge.core.config import get_settings
-from brd_knowledge.core.exceptions import GenerationError
+from brd_knowledge.core.exceptions import GenerationError, RetrievalRerankingError
 from brd_knowledge.database.session import SessionLocal
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
 from brd_knowledge.llm.factory import create_llm_provider
-from brd_knowledge.retrieval import PgVectorRetriever
+from brd_knowledge.retrieval import (
+    CrossEncoderRerankingRetriever,
+    PgVectorRetriever,
+    TransformersCrossEncoderScorer,
+)
 from brd_knowledge.schemas.query import DocumentQuestionRequest
 from brd_knowledge.services.question_answering_service import QuestionAnsweringService
 
@@ -25,7 +29,7 @@ def positive_int(value: str) -> int:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Answer one question using dense retrieval and a configured LLM."
+        description="Answer one question using dense retrieval, reranking, and a configured LLM."
     )
     parser.add_argument("question")
     parser.add_argument("--provider", choices=["gemini", "local_qwen"])
@@ -63,9 +67,20 @@ def main() -> None:
             device=settings.embedding_device,
             preprocessing_version=settings.embedding_preprocessing_version,
         )
+        reranker_scorer = TransformersCrossEncoderScorer(
+            model_name=settings.reranker_model_name,
+            model_revision=settings.reranker_model_revision,
+            max_sequence_length=settings.reranker_max_sequence_length,
+            batch_size=settings.reranker_batch_size,
+            device=settings.reranker_device,
+        )
         with SessionLocal() as session:
             question_service = QuestionAnsweringService(
-                PgVectorRetriever(session, embedding_provider),
+                CrossEncoderRerankingRetriever(
+                    PgVectorRetriever(session, embedding_provider),
+                    reranker_scorer,
+                    candidate_k=settings.reranker_candidate_k,
+                ),
                 settings,
                 provider_factory=lambda *_args, **_kwargs: provider,
             )
@@ -110,7 +125,7 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (GenerationError, ValidationError, ValueError) as exc:
+    except (GenerationError, RetrievalRerankingError, ValidationError, ValueError) as exc:
         # Do not print SDK exceptions, chained tracebacks, or settings values.
         print(
             f"{type(exc).__name__}: query failed; check configuration and budgets.", file=sys.stderr

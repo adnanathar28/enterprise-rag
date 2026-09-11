@@ -18,6 +18,10 @@ class DocumentIndexingError(BRDKnowledgeError):
     """Raised when search preparation fails; the saved document can be retried."""
 
 
+class RetrievalRerankingError(BRDKnowledgeError):
+    """Raised when dense candidates cannot be reranked safely."""
+
+
 class GenerationError(BRDKnowledgeError):
     """Base exception for grounded answer generation failures."""
 

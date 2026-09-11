@@ -10,13 +10,13 @@ from brd_knowledge.core.config import get_settings
 from brd_knowledge.database.session import SessionLocal
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
 from brd_knowledge.evaluation.retrieval import aggregate_metrics, evaluate_ranking
-from brd_knowledge.retrieval.experimental_reranking import (
+from brd_knowledge.retrieval.pgvector import PgVectorRetriever
+from brd_knowledge.retrieval.reranking import (
     MODEL_NAME,
     MODEL_REVISION,
     TransformersCrossEncoderScorer,
     rerank_chunks,
 )
-from brd_knowledge.retrieval.pgvector import PgVectorRetriever
 from brd_knowledge.schemas.evaluation import RetrievalEvalDataset
 from brd_knowledge.schemas.retrieval import RetrievedChunk
 
@@ -119,7 +119,7 @@ def main() -> None:
     scorer = TransformersCrossEncoderScorer(batch_size=args.batch_size, device=args.device)
 
     model_load_started = perf_counter()
-    scorer._ensure_loaded()
+    scorer.load()
     model_load_seconds = perf_counter() - model_load_started
 
     results: list[dict[str, Any]] = []

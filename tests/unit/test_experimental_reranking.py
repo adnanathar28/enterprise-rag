@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from brd_knowledge.core.exceptions import RetrievalRerankingError
 from brd_knowledge.evaluation.retrieval import aggregate_metrics, evaluate_ranking
-from brd_knowledge.retrieval.experimental_reranking import rerank_chunks
+from brd_knowledge.retrieval.reranking import CrossEncoderRerankingRetriever, rerank_chunks
 from brd_knowledge.schemas.evaluation import RetrievalEvalExample
 from brd_knowledge.schemas.retrieval import RetrievedChunk
 
@@ -31,6 +32,22 @@ class FakeScorer:
     def score(self, query: str, passages: list[str]) -> list[float]:
         self.calls.append((query, list(passages)))
         return self.scores
+
+
+class FakeDenseRetriever:
+    def __init__(self, results: list[RetrievedChunk]) -> None:
+        self.results = results
+        self.calls: list[tuple[str, int, str | None]] = []
+
+    def search(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        document_id: str | None = None,
+    ) -> list[RetrievedChunk]:
+        self.calls.append((query, top_k, document_id))
+        return self.results[:top_k]
 
 
 def test_reranks_candidates_by_cross_encoder_score_and_preserves_dense_rank() -> None:
@@ -106,3 +123,36 @@ def test_reranked_chunks_use_shared_fact_coverage_metrics() -> None:
     assert metrics.full_coverage_at_1 == 0
     assert metrics.full_coverage_at_3 == 1
     assert metrics.mean_fact_coverage_at_1 == 0.5
+
+
+def test_production_retriever_reranks_dense_top_40_and_returns_requested_top_k() -> None:
+    dense = FakeDenseRetriever([candidate("a", 1), candidate("b", 2), candidate("c", 3)])
+    scorer = FakeScorer([0.1, 1.5, 0.8])
+    retriever = CrossEncoderRerankingRetriever(dense, scorer, candidate_k=40)
+
+    results = retriever.search("question", top_k=2, document_id="doc-1")
+
+    assert dense.calls == [("question", 40, "doc-1")]
+    assert [item.chunk_id for item in results] == ["b", "c"]
+    assert [item.rank for item in results] == [1, 2]
+    assert results[0].similarity == candidate("b", 2).similarity
+    assert scorer.calls == [("question", ["Text for a", "Text for b", "Text for c"])]
+
+
+def test_production_retriever_uses_requested_k_when_larger_than_candidate_pool() -> None:
+    dense = FakeDenseRetriever([candidate("a", 1)])
+    retriever = CrossEncoderRerankingRetriever(dense, FakeScorer([0.5]), candidate_k=2)
+
+    retriever.search("question", top_k=3)
+
+    assert dense.calls == [("question", 3, None)]
+
+
+def test_production_retriever_wraps_scorer_failure() -> None:
+    dense = FakeDenseRetriever([candidate("a", 1), candidate("b", 2)])
+    retriever = CrossEncoderRerankingRetriever(dense, FakeScorer([0.5]), candidate_k=40)
+
+    with pytest.raises(RetrievalRerankingError, match="reranking failed") as exc_info:
+        retriever.search("question")
+
+    assert isinstance(exc_info.value.__cause__, ValueError)

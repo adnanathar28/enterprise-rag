@@ -8,7 +8,11 @@ from brd_knowledge.core.config import Settings, get_settings
 from brd_knowledge.database.session import get_db_session
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
 from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
-from brd_knowledge.retrieval import PgVectorRetriever
+from brd_knowledge.retrieval import (
+    CrossEncoderRerankingRetriever,
+    PgVectorRetriever,
+    TransformersCrossEncoderScorer,
+)
 from brd_knowledge.services.chunk_embedding_service import ChunkEmbeddingService
 from brd_knowledge.services.document_indexing_service import DocumentIndexingService
 from brd_knowledge.services.document_persistence_service import DocumentPersistenceService
@@ -54,16 +58,37 @@ def embedding_provider_dependency() -> GteModernBertEmbeddingProvider:
     )
 
 
+@lru_cache
+def reranker_scorer_dependency() -> TransformersCrossEncoderScorer:
+    settings = get_settings()
+    return TransformersCrossEncoderScorer(
+        model_name=settings.reranker_model_name,
+        model_revision=settings.reranker_model_revision,
+        max_sequence_length=settings.reranker_max_sequence_length,
+        batch_size=settings.reranker_batch_size,
+        device=settings.reranker_device,
+    )
+
+
 def question_answering_service_dependency(
     session: Annotated[Session, Depends(get_db_session)],
     embedding_provider: Annotated[
         GteModernBertEmbeddingProvider,
         Depends(embedding_provider_dependency),
     ],
+    reranker_scorer: Annotated[
+        TransformersCrossEncoderScorer,
+        Depends(reranker_scorer_dependency),
+    ],
 ) -> QuestionAnsweringService:
+    settings = get_settings()
     return QuestionAnsweringService(
-        PgVectorRetriever(session, embedding_provider),
-        get_settings(),
+        CrossEncoderRerankingRetriever(
+            PgVectorRetriever(session, embedding_provider),
+            reranker_scorer,
+            candidate_k=settings.reranker_candidate_k,
+        ),
+        settings,
     )
 
 

@@ -16,6 +16,7 @@ from brd_knowledge.api.dependencies import (
     settings_dependency,
 )
 from brd_knowledge.core.config import Settings
+from brd_knowledge.core.exceptions import RetrievalRerankingError
 from brd_knowledge.main import app
 from brd_knowledge.parsing.options import ParseOptions
 from brd_knowledge.schemas.document import DocumentMetadata, Page, ParsedDocument, ParserMetadata
@@ -415,6 +416,30 @@ def test_ask_document_question_rejects_document_that_is_not_indexed() -> None:
     assert response.status_code == 409
     assert response.json()["detail"].endswith("not_indexed")
     question_service.answer.assert_not_called()
+
+
+def test_ask_document_question_maps_reranker_failure_to_503() -> None:
+    persistence_service = FakeDocumentPersistenceService()
+    question_service = MagicMock()
+    question_service.answer.side_effect = RetrievalRerankingError("sensitive detail")
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+    app.dependency_overrides[embedding_provider_dependency] = lambda: SimpleNamespace(
+        configuration=object()
+    )
+    app.dependency_overrides[question_answering_service_dependency] = lambda: question_service
+
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/documents/doc-001/questions",
+            json={"question": "What must be retained?"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Evidence reranking is temporarily unavailable."}
+    assert "sensitive detail" not in response.text
 
 
 def test_capabilities_reports_provider_configuration_without_secrets() -> None:

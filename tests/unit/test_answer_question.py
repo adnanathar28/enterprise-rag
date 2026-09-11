@@ -25,7 +25,7 @@ def load_script() -> ModuleType:
     return module
 
 
-def test_cli_uses_dense_retrieval_and_resolves_citations(monkeypatch, capsys) -> None:
+def test_cli_uses_production_reranking_and_resolves_citations(monkeypatch, capsys) -> None:
     script = load_script()
     monkeypatch.setattr(
         "sys.argv",
@@ -54,6 +54,11 @@ def test_cli_uses_dense_retrieval_and_resolves_citations(monkeypatch, capsys) ->
     ]
     dense_factory = Mock(return_value=retriever)
     monkeypatch.setattr(script, "PgVectorRetriever", dense_factory)
+    scorer = Mock()
+    scorer_factory = Mock(return_value=scorer)
+    monkeypatch.setattr(script, "TransformersCrossEncoderScorer", scorer_factory)
+    reranking_factory = Mock(return_value=retriever)
+    monkeypatch.setattr(script, "CrossEncoderRerankingRetriever", reranking_factory)
     provider = FakeProvider()
     provider.close = Mock()
     provider_factory = Mock(return_value=provider)
@@ -62,6 +67,18 @@ def test_cli_uses_dense_retrieval_and_resolves_citations(monkeypatch, capsys) ->
     script.main()
 
     dense_factory.assert_called_once_with(session.__enter__.return_value, embedding)
+    scorer_factory.assert_called_once_with(
+        model_name=settings.reranker_model_name,
+        model_revision=settings.reranker_model_revision,
+        max_sequence_length=settings.reranker_max_sequence_length,
+        batch_size=settings.reranker_batch_size,
+        device=settings.reranker_device,
+    )
+    reranking_factory.assert_called_once_with(
+        dense_factory.return_value,
+        scorer,
+        candidate_k=settings.reranker_candidate_k,
+    )
     retriever.search.assert_called_once_with(
         "What is required?", top_k=3, document_id="approved-doc"
     )

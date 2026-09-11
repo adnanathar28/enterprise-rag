@@ -40,6 +40,22 @@ class Settings(BaseSettings):
         default="1",
         alias="EMBEDDING_PREPROCESSING_VERSION",
     )
+    reranker_model_name: str = Field(
+        default="cross-encoder/ms-marco-MiniLM-L6-v2",
+        alias="RERANKER_MODEL_NAME",
+    )
+    reranker_model_revision: str = Field(
+        default="233902d25c440f23af6f7d6e94d2946bac0bee0a",
+        alias="RERANKER_MODEL_REVISION",
+    )
+    reranker_max_sequence_length: int = Field(
+        default=512,
+        alias="RERANKER_MAX_SEQUENCE_LENGTH",
+        gt=0,
+    )
+    reranker_batch_size: int = Field(default=16, alias="RERANKER_BATCH_SIZE", gt=0)
+    reranker_device: str = Field(default="cpu", alias="RERANKER_DEVICE")
+    reranker_candidate_k: int = Field(default=40, alias="RERANKER_CANDIDATE_K", gt=0)
 
     llm_provider: Literal["gemini", "local_qwen"] = Field(default="gemini", alias="LLM_PROVIDER")
     local_qwen_model: str = Field(default="qwen3:8b", alias="LOCAL_QWEN_MODEL")

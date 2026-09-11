@@ -3,7 +3,8 @@
 `brd-knowledge` is an enterprise RAG application for converting Business Requirement
 Documents (BRDs) into a normalized, provenance-preserving knowledge workspace.
 
-Current phase: dense retrieval, deterministic context construction, grounded answer
+Current phase: dense retrieval with local cross-encoder reranking, deterministic context
+construction, grounded answer
 generation with Gemini and local Qwen adapters, and a document-centered React UI.
 Parsing, normalization, structure-aware chunking, embeddings, PostgreSQL/pgvector
 persistence, and retrieval evaluation are implemented. Lexical and hybrid RRF
@@ -171,13 +172,19 @@ For example, if the IDS benchmark document is persisted and approved:
 This is a manual, potentially billable operation. Automated tests use fakes and
 HTTP mock transports. No live Gemini test runs as part of pytest.
 
-The CLI uses exact dense retrieval, unchanged `ContextBuilder` prefix packing,
-`GroundedAnswerService`, Gemini, and application-side citation validation. It prints
+The CLI uses the production retrieval path: GTE dense top 40 followed by the pinned
+local MiniLM cross-encoder and a final top 5 by default. It retains unchanged
+`ContextBuilder` prefix packing, `GroundedAnswerService`, Gemini, and application-side
+citation validation. It prints
 JSON containing the answer, authoritative resolved citations, token usage,
 returned model version, Gemini response ID (in `provider_request_id`), configuration,
 context exclusions, and elapsed time. Output may contain confidential answer text;
 handle any redirected output accordingly. The same orchestration is available at
 `POST /documents/{document_id}/questions` for the frontend.
+
+The reranker runs locally and does not use a paid API. Its pinned model is loaded
+once per API process on the first question; deployment must make that Hugging Face
+revision available in the local model cache or permit its initial download.
 
 ### Gemini baseline configuration
 
