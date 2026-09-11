@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import import_module, metadata
 from pathlib import Path
@@ -29,6 +30,44 @@ from brd_knowledge.schemas.document import (
 from brd_knowledge.schemas.section import DocumentSection
 from brd_knowledge.schemas.source import BoundingBox, CoordinateOrigin, SourceReference
 from brd_knowledge.schemas.table import ParsedTable, TableCell, TableRow
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeWord:
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeRowBand:
+    words: tuple[_NativeWord, ...]
+
+    @property
+    def x0(self) -> float:
+        return min(word.x0 for word in self.words)
+
+    @property
+    def y0(self) -> float:
+        return min(word.y0 for word in self.words)
+
+    @property
+    def x1(self) -> float:
+        return max(word.x1 for word in self.words)
+
+    @property
+    def y1(self) -> float:
+        return max(word.y1 for word in self.words)
+
+    @property
+    def center_y(self) -> float:
+        return (self.y0 + self.y1) / 2
+
+    @property
+    def text(self) -> str:
+        return " ".join(word.text for word in sorted(self.words, key=lambda word: word.x0))
 
 
 class DoclingDocumentParser(DocumentParser):
@@ -369,12 +408,13 @@ class DoclingDocumentParser(DocumentParser):
                 )
                 return
 
-            words = page.get_text("words", clip=clip, sort=True)
+            raw_words = page.get_text("words", clip=clip, sort=True)
         except (IndexError, OSError, RuntimeError, ValueError):
             table.quality_notes.append("Native PDF table-text comparison failed.")
             return
 
-        native_text = " ".join(str(word[4]) for word in words if str(word[4]).strip()).strip()
+        words = [word for raw_word in raw_words if (word := self._native_word(raw_word))]
+        native_text = " ".join(word.text for word in words).strip()
         if not native_text:
             table.quality_notes.append("No native PDF text was found inside the table region.")
             return
@@ -388,6 +428,276 @@ class DoclingDocumentParser(DocumentParser):
                 "Structured table text covers only "
                 f"{coverage:.1%} of native table-region tokens; use native_text as a fallback."
             )
+            return
+
+        self._repair_table_from_native_geometry(table, words)
+
+    def _native_word(self, raw_word: Any) -> _NativeWord | None:
+        try:
+            text = str(raw_word[4]).strip()
+            if not text:
+                return None
+            return _NativeWord(
+                x0=float(raw_word[0]),
+                y0=float(raw_word[1]),
+                x1=float(raw_word[2]),
+                y1=float(raw_word[3]),
+                text=text,
+            )
+        except (IndexError, TypeError, ValueError):
+            return None
+
+    def _repair_table_from_native_geometry(
+        self,
+        table: ParsedTable,
+        words: list[_NativeWord],
+    ) -> bool:
+        original_cells = list(table.cells)
+        replacements: dict[str, list[TableCell]] = {}
+        span_updates: dict[str, int] = {}
+
+        for cell in original_cells:
+            if (
+                cell.cell_id is None
+                or cell.row_span != 1
+                or cell.column_span != 1
+                or cell.bounding_box is None
+                or cell.bounding_box.coordinate_origin != "top_left"
+                or not cell.text.strip()
+            ):
+                continue
+
+            cell_words = self._words_inside_box(words, cell.bounding_box)
+            bands = self._native_row_bands(cell_words)
+            if len(bands) < 2 or self._normalized_whitespace(
+                " ".join(band.text for band in bands)
+            ) != self._normalized_whitespace(cell.text):
+                continue
+
+            row_indexes = self._aligned_table_rows(table, cell, bands)
+            if row_indexes != list(range(cell.row_index, cell.row_index + len(bands))):
+                continue
+            if any(
+                other is not cell
+                and other.row_index in row_indexes
+                and other.column_index == cell.column_index
+                for other in original_cells
+            ):
+                continue
+
+            spanning_labels = [
+                label
+                for label in original_cells
+                if self._label_spans_native_bands(
+                    label,
+                    malformed_cell=cell,
+                    row_indexes=row_indexes,
+                    bands=bands,
+                    cells=original_cells,
+                    words=words,
+                )
+            ]
+            if not spanning_labels:
+                continue
+
+            replacements[cell.cell_id] = [
+                self._cell_from_native_band(table, cell, row_index, band)
+                for row_index, band in zip(row_indexes, bands, strict=True)
+            ]
+            for label in spanning_labels:
+                assert label.cell_id is not None
+                span_updates[label.cell_id] = len(row_indexes)
+
+        if not replacements:
+            return False
+
+        repaired_cells: list[TableCell] = []
+        for cell in original_cells:
+            if cell.cell_id in replacements:
+                repaired_cells.extend(replacements[cell.cell_id])
+            elif cell.cell_id in span_updates:
+                repaired_cells.append(
+                    cell.model_copy(update={"row_span": span_updates[cell.cell_id]})
+                )
+            else:
+                repaired_cells.append(cell)
+
+        table.cells = sorted(
+            repaired_cells,
+            key=lambda item: (item.row_index, item.column_index, item.cell_id or ""),
+        )
+        cells_by_row: dict[int, list[TableCell]] = defaultdict(list)
+        for cell in table.cells:
+            cells_by_row[cell.row_index].append(cell)
+        table.rows = [
+            TableRow(
+                row_index=row_index,
+                cells=sorted(row_cells, key=lambda item: item.column_index),
+            )
+            for row_index, row_cells in sorted(cells_by_row.items())
+        ]
+        return True
+
+    def _words_inside_box(
+        self,
+        words: list[_NativeWord],
+        box: BoundingBox,
+    ) -> list[_NativeWord]:
+        return [
+            word
+            for word in words
+            if box.x0 <= (word.x0 + word.x1) / 2 <= box.x1
+            and box.y0 <= (word.y0 + word.y1) / 2 <= box.y1
+        ]
+
+    def _native_row_bands(self, words: list[_NativeWord]) -> list[_NativeRowBand]:
+        bands: list[list[_NativeWord]] = []
+        for word in sorted(words, key=lambda item: (item.y0, item.x0)):
+            if bands and any(
+                self._vertical_overlap(word.y0, word.y1, existing.y0, existing.y1) > 0
+                for existing in bands[-1]
+            ):
+                bands[-1].append(word)
+            else:
+                bands.append([word])
+        return [_NativeRowBand(tuple(band)) for band in bands]
+
+    def _aligned_table_rows(
+        self,
+        table: ParsedTable,
+        malformed_cell: TableCell,
+        bands: list[_NativeRowBand],
+    ) -> list[int]:
+        matched_rows: list[int] = []
+        for band in bands:
+            candidates: list[int] = []
+            for row in table.rows:
+                aligned_columns = {
+                    cell.column_index
+                    for cell in row.cells
+                    if cell is not malformed_cell
+                    and cell.column_index != malformed_cell.column_index
+                    and cell.row_span == 1
+                    and cell.text.strip()
+                    and cell.bounding_box is not None
+                    and cell.bounding_box.coordinate_origin == "top_left"
+                    and self._overlap_ratio(
+                        band.y0,
+                        band.y1,
+                        cell.bounding_box.y0,
+                        cell.bounding_box.y1,
+                    )
+                    >= 0.8
+                }
+                if len(aligned_columns) >= 2:
+                    candidates.append(row.row_index)
+            if len(candidates) != 1:
+                return []
+            matched_rows.append(candidates[0])
+        return matched_rows if len(set(matched_rows)) == len(matched_rows) else []
+
+    def _label_spans_native_bands(
+        self,
+        label: TableCell,
+        *,
+        malformed_cell: TableCell,
+        row_indexes: list[int],
+        bands: list[_NativeRowBand],
+        cells: list[TableCell],
+        words: list[_NativeWord],
+    ) -> bool:
+        if (
+            label is malformed_cell
+            or label.cell_id is None
+            or label.row_index != row_indexes[0]
+            or label.row_span != 1
+            or label.column_span != 1
+            or label.column_index == malformed_cell.column_index
+            or label.bounding_box is None
+            or label.bounding_box.coordinate_origin != "top_left"
+            or not label.text.strip()
+            or any(
+                other is not label
+                and other.column_index == label.column_index
+                and other.row_index in row_indexes[1:]
+                for other in cells
+            )
+        ):
+            return False
+
+        label_words = self._words_inside_box(words, label.bounding_box)
+        label_bands = self._native_row_bands(label_words)
+        if len(label_bands) != 1 or self._normalized_whitespace(
+            label_bands[0].text
+        ) != self._normalized_whitespace(label.text):
+            return False
+        if any(
+            self._vertical_overlap(
+                label.bounding_box.y0,
+                label.bounding_box.y1,
+                band.y0,
+                band.y1,
+            )
+            <= 0
+            for band in bands
+        ):
+            return False
+
+        expected_center = sum(band.center_y for band in bands) / len(bands)
+        label_center = (label.bounding_box.y0 + label.bounding_box.y1) / 2
+        band_spacing = min(
+            later.center_y - earlier.center_y
+            for earlier, later in zip(bands, bands[1:], strict=False)
+        )
+        return abs(label_center - expected_center) <= band_spacing * 0.1
+
+    def _cell_from_native_band(
+        self,
+        table: ParsedTable,
+        original: TableCell,
+        row_index: int,
+        band: _NativeRowBand,
+    ) -> TableCell:
+        assert original.bounding_box is not None
+        cell_id = f"{table.table_id}-r{row_index}-c{original.column_index}"
+        bounding_box = BoundingBox(
+            page_number=original.bounding_box.page_number,
+            x0=band.x0,
+            y0=band.y0,
+            x1=band.x1,
+            y1=band.y1,
+            coordinate_origin="top_left",
+        )
+        source = original.source
+        if source is not None:
+            source = source.model_copy(
+                update={
+                    "cell_id": cell_id,
+                    "text_excerpt": self._excerpt(band.text),
+                    "bounding_box": bounding_box,
+                }
+            )
+        return original.model_copy(
+            update={
+                "cell_id": cell_id,
+                "row_index": row_index,
+                "text": band.text,
+                "row_span": 1,
+                "bounding_box": bounding_box,
+                "source": source,
+            }
+        )
+
+    def _overlap_ratio(self, y0: float, y1: float, other_y0: float, other_y1: float) -> float:
+        overlap = self._vertical_overlap(y0, y1, other_y0, other_y1)
+        smaller_height = min(y1 - y0, other_y1 - other_y0)
+        return overlap / smaller_height if smaller_height > 0 else 0.0
+
+    def _vertical_overlap(self, y0: float, y1: float, other_y0: float, other_y1: float) -> float:
+        return max(0.0, min(y1, other_y1) - max(y0, other_y0))
+
+    def _normalized_whitespace(self, text: str) -> str:
+        return " ".join(text.split())
 
     def _token_coverage(self, source_text: str, candidate_text: str) -> float:
         source_tokens = Counter(self._normalized_tokens(source_text))

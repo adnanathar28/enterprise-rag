@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 import pymupdf
 
-from brd_knowledge.parsing.docling_parser import DoclingDocumentParser
+from brd_knowledge.parsing.docling_parser import DoclingDocumentParser, _NativeWord
 from brd_knowledge.schemas.document import DocumentBlock, ParserDiagnostic
-from brd_knowledge.schemas.source import BoundingBox
-from brd_knowledge.schemas.table import ParsedTable, TableCell
+from brd_knowledge.schemas.source import BoundingBox, SourceReference
+from brd_knowledge.schemas.table import ParsedTable, TableCell, TableRow
 
 
 def bbox() -> SimpleNamespace:
@@ -295,3 +295,265 @@ def test_docling_coordinate_origin_recognizes_docling_enum_strings() -> None:
 
     assert parser._coordinate_origin("CoordOrigin.TOPLEFT") == "top_left"
     assert parser._coordinate_origin("CoordOrigin.BOTTOMLEFT") == "bottom_left"
+
+
+def native_box(x0: float, y0: float, x1: float, y1: float) -> BoundingBox:
+    return BoundingBox(
+        page_number=1,
+        x0=x0,
+        y0=y0,
+        x1=x1,
+        y1=y1,
+        coordinate_origin="top_left",
+    )
+
+
+def native_word(text: str, x0: float, y0: float, x1: float, y1: float) -> _NativeWord:
+    return _NativeWord(x0=x0, y0=y0, x1=x1, y1=y1, text=text)
+
+
+def malformed_two_row_group() -> tuple[ParsedTable, list[_NativeWord]]:
+    cells = [
+        TableCell(
+            cell_id="table-1-r1-c0",
+            row_index=1,
+            column_index=0,
+            text="Model A",
+            bounding_box=native_box(10, 14, 70, 24),
+        ),
+        TableCell(
+            cell_id="table-1-r1-c1",
+            row_index=1,
+            column_index=1,
+            text="GraphRAG VersionRAG",
+            bounding_box=native_box(100, 10, 170, 28),
+            source=SourceReference(
+                document_id="doc-1",
+                page_number=1,
+                table_id="table-1",
+                cell_id="table-1-r1-c1",
+                text_excerpt="GraphRAG VersionRAG",
+                bounding_box=native_box(100, 10, 170, 28),
+            ),
+        ),
+        TableCell(
+            cell_id="table-1-r1-c2",
+            row_index=1,
+            column_index=2,
+            text="100",
+            bounding_box=native_box(200, 10, 230, 18),
+        ),
+        TableCell(
+            cell_id="table-1-r1-c3",
+            row_index=1,
+            column_index=3,
+            text="10min",
+            bounding_box=native_box(300, 10, 340, 18),
+        ),
+        TableCell(
+            cell_id="table-1-r2-c2",
+            row_index=2,
+            column_index=2,
+            text="50",
+            bounding_box=native_box(200, 20, 230, 28),
+        ),
+        TableCell(
+            cell_id="table-1-r2-c3",
+            row_index=2,
+            column_index=3,
+            text="5min",
+            bounding_box=native_box(300, 20, 340, 28),
+        ),
+    ]
+    table = ParsedTable(
+        table_id="table-1",
+        page_number=1,
+        page_numbers=[1],
+        rows=[
+            TableRow(row_index=1, cells=cells[:4]),
+            TableRow(row_index=2, cells=cells[4:]),
+        ],
+        cells=cells,
+    )
+    words = [
+        native_word("Model", 10, 14, 42, 24),
+        native_word("A", 45, 14, 52, 24),
+        native_word("GraphRAG", 100, 10, 140, 18),
+        native_word("VersionRAG", 100, 20, 150, 28),
+        native_word("100", 200, 10, 230, 18),
+        native_word("10min", 300, 10, 340, 18),
+        native_word("50", 200, 20, 230, 28),
+        native_word("5min", 300, 20, 340, 28),
+    ]
+    return table, words
+
+
+def test_native_geometry_repairs_malformed_two_row_group() -> None:
+    table, words = malformed_two_row_group()
+
+    repaired = DoclingDocumentParser()._repair_table_from_native_geometry(table, words)
+
+    assert repaired is True
+    rendered_cells = [
+        (cell.row_index, cell.column_index, cell.text, cell.row_span) for cell in table.cells
+    ]
+    assert rendered_cells == [
+        (1, 0, "Model A", 2),
+        (1, 1, "GraphRAG", 1),
+        (1, 2, "100", 1),
+        (1, 3, "10min", 1),
+        (2, 1, "VersionRAG", 1),
+        (2, 2, "50", 1),
+        (2, 3, "5min", 1),
+    ]
+    split_cells = [cell for cell in table.cells if cell.column_index == 1]
+    assert [cell.source.cell_id for cell in split_cells if cell.source is not None] == [
+        "table-1-r1-c1",
+        "table-1-r2-c1",
+    ]
+    assert all(cell.source is not None for cell in split_cells)
+
+
+def test_native_geometry_leaves_normal_table_unchanged() -> None:
+    table, words = malformed_two_row_group()
+    approach = table.cells[1]
+    approach.text = "GraphRAG"
+    approach.bounding_box = native_box(100, 10, 140, 18)
+    table.cells.insert(
+        4,
+        TableCell(
+            cell_id="table-1-r2-c1",
+            row_index=2,
+            column_index=1,
+            text="VersionRAG",
+            bounding_box=native_box(100, 20, 150, 28),
+        ),
+    )
+    table.rows[1].cells.insert(0, table.cells[4])
+    before = table.model_dump(mode="json")
+
+    repaired = DoclingDocumentParser()._repair_table_from_native_geometry(table, words)
+
+    assert repaired is False
+    assert table.model_dump(mode="json") == before
+
+
+def test_native_geometry_leaves_existing_row_span_unchanged() -> None:
+    table, words = malformed_two_row_group()
+    table.cells[0].row_span = 2
+    table.rows[0].cells[0].row_span = 2
+    table.cells[1].text = "GraphRAG"
+    table.cells[1].bounding_box = native_box(100, 10, 140, 18)
+    version = TableCell(
+        cell_id="table-1-r2-c1",
+        row_index=2,
+        column_index=1,
+        text="VersionRAG",
+        bounding_box=native_box(100, 20, 150, 28),
+    )
+    table.cells.append(version)
+    table.rows[1].cells.append(version)
+    before = table.model_dump(mode="json")
+
+    repaired = DoclingDocumentParser()._repair_table_from_native_geometry(table, words)
+
+    assert repaired is False
+    assert table.model_dump(mode="json") == before
+
+
+def test_native_geometry_does_not_fill_genuine_blank_cell() -> None:
+    table, words = malformed_two_row_group()
+    table.cells.pop(1)
+    table.rows[0].cells.pop(1)
+    before = table.model_dump(mode="json")
+
+    repaired = DoclingDocumentParser()._repair_table_from_native_geometry(table, words)
+
+    assert repaired is False
+    assert table.model_dump(mode="json") == before
+    assert not any(cell.row_index == 2 and cell.column_index == 0 for cell in table.cells)
+
+
+def test_native_geometry_keeps_independent_row_groups_separate() -> None:
+    table, words = malformed_two_row_group()
+    second_group = [
+        TableCell(
+            cell_id="table-1-r3-c0",
+            row_index=3,
+            column_index=0,
+            text="Model B",
+            row_span=2,
+            bounding_box=native_box(10, 34, 70, 44),
+        ),
+        TableCell(
+            cell_id="table-1-r3-c1",
+            row_index=3,
+            column_index=1,
+            text="GraphRAG",
+            bounding_box=native_box(100, 30, 140, 38),
+        ),
+        TableCell(
+            cell_id="table-1-r4-c1",
+            row_index=4,
+            column_index=1,
+            text="VersionRAG",
+            bounding_box=native_box(100, 40, 150, 48),
+        ),
+    ]
+    table.cells.extend(second_group)
+    table.rows.extend(
+        [
+            TableRow(row_index=3, cells=second_group[:2]),
+            TableRow(row_index=4, cells=second_group[2:]),
+        ]
+    )
+    words.extend(
+        [
+            native_word("Model", 10, 34, 42, 44),
+            native_word("B", 45, 34, 52, 44),
+            native_word("GraphRAG", 100, 30, 140, 38),
+            native_word("VersionRAG", 100, 40, 150, 48),
+        ]
+    )
+
+    repaired = DoclingDocumentParser()._repair_table_from_native_geometry(table, words)
+
+    assert repaired is True
+    model_b = next(cell for cell in table.cells if cell.text == "Model B")
+    assert (model_b.row_index, model_b.row_span) == (3, 2)
+    assert not any(cell.row_index == 2 and cell.text == "Model B" for cell in table.cells)
+
+
+def test_native_geometry_abstains_when_cross_row_alignment_is_ambiguous() -> None:
+    table, words = malformed_two_row_group()
+    table.cells[0].bounding_box = native_box(10, 10, 70, 18)
+    table.rows[0].cells[0].bounding_box = native_box(10, 10, 70, 18)
+    before = table.model_dump(mode="json")
+
+    repaired = DoclingDocumentParser()._repair_table_from_native_geometry(table, words)
+
+    assert repaired is False
+    assert table.model_dump(mode="json") == before
+
+
+def test_native_geometry_abstains_when_cell_coordinates_are_missing() -> None:
+    table, words = malformed_two_row_group()
+    table.cells[0].bounding_box = None
+    table.rows[0].cells[0].bounding_box = None
+    before = table.model_dump(mode="json")
+
+    repaired = DoclingDocumentParser()._repair_table_from_native_geometry(table, words)
+
+    assert repaired is False
+    assert table.model_dump(mode="json") == before
+
+
+def test_native_geometry_abstains_when_native_text_does_not_match() -> None:
+    table, words = malformed_two_row_group()
+    words[3] = native_word("OtherRAG", 100, 20, 150, 28)
+    before = table.model_dump(mode="json")
+
+    repaired = DoclingDocumentParser()._repair_table_from_native_geometry(table, words)
+
+    assert repaired is False
+    assert table.model_dump(mode="json") == before
