@@ -42,6 +42,31 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## Retrieval evaluation
+
+The committed v1 datasets retain exact-chunk evaluation for reproducibility. The
+v2 datasets model each question as one or more required facts. Each fact has one
+or more independently acceptable evidence locators. A locator matches only when
+all of its explicit source/section/page constraints and all whitespace-normalized
+text anchors match; the evaluator does not use fuzzy or semantic label matching.
+
+V2 reports `AnyEvidence@K` (at least one fact found), `FullCoverage@K` (every
+required fact found), `MeanFactCoverage@K` (average fraction of facts found), and
+`MRR@5` (rank of the first useful evidence within the production-sized top five).
+For a one-fact v1 example, the legacy `Recall@K` values remain aliases of
+`AnyEvidence@K`.
+
+Audit v2 labels against all currently stored chunks before evaluating:
+
+```powershell
+python scripts/audit_retrieval_dataset.py data/evals/ids_retrieval_eval_v2.json
+python scripts/evaluate_retrieval.py data/evals/ids_retrieval_eval_v2.json
+```
+
+The audit fails on locators matching no chunks or more than the configured
+maximum. Experimental reranking and the dense/lexical/hybrid evaluator share the
+same evidence matcher and metric implementation.
+
 ## Start API
 
 ```powershell

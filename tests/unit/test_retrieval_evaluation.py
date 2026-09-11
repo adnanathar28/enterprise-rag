@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from brd_knowledge.evaluation import RetrievalComparisonEvaluator, RetrievalEvaluator
+from brd_knowledge.evaluation.retrieval import audit_dataset_locators
 from brd_knowledge.schemas.evaluation import RetrievalEvalDataset, RetrievalEvalExample
 from brd_knowledge.schemas.experimental_retrieval import ExperimentalRetrievedChunk
 
@@ -17,6 +21,7 @@ def result(chunk_id: str, rank: int, *, page: int = 1) -> ExperimentalRetrievedC
         text=f"Evidence {chunk_id}",
         page_start=page,
         page_end=page,
+        source_block_ids=[f"source-{chunk_id}"],
     )
 
 
@@ -145,3 +150,195 @@ def test_comparison_records_recoveries_and_regressions() -> None:
     assert report.dense_success_regressions == ["regressed"]
     assert report.per_question[0].dense_first_relevant_rank is None
     assert report.per_question[0].hybrid_first_relevant_rank == 1
+
+
+def test_v2_tracks_any_full_and_partial_fact_coverage() -> None:
+    dataset = RetrievalEvalDataset.model_validate(
+        {
+            "schema_version": 2,
+            "name": "fact coverage",
+            "examples": [
+                {
+                    "question": "compound",
+                    "expected_document_id": "doc-1",
+                    "required_facts": [
+                        {
+                            "fact_id": "first",
+                            "description": "First fact",
+                            "acceptable_evidence": [
+                                {
+                                    "source_block_id": "source-a",
+                                    "text_anchors": ["Evidence   a"],
+                                },
+                                {
+                                    "section_path": ["Requirements"],
+                                    "pages": [2],
+                                    "text_anchors": ["alternative first fact"],
+                                },
+                            ],
+                        },
+                        {
+                            "fact_id": "second",
+                            "description": "Second fact",
+                            "acceptable_evidence": [
+                                {
+                                    "source_block_id": "source-c",
+                                    "text_anchors": ["Evidence c"],
+                                }
+                            ],
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    retriever = FakeRetriever(
+        {"compound": [result("a", 1), result("x", 2), result("c", 3)]}
+    )
+
+    report = RetrievalEvaluator(retriever).evaluate(dataset)
+    item = report.results[0]
+
+    assert item.covered_fact_ids_at_1 == ["first"]
+    assert item.mean_fact_coverage_at_1 == 0.5
+    assert item.full_coverage_at_1 is False
+    assert item.covered_fact_ids_at_3 == ["first", "second"]
+    assert item.first_rank_by_fact == {"first": 1, "second": 3}
+    assert item.mean_fact_coverage_at_3 == 1.0
+    assert item.full_coverage_at_3 is True
+    assert report.metrics.any_evidence_at_1 == 1.0
+    assert report.metrics.full_coverage_at_1 == 0.0
+    assert report.metrics.full_coverage_at_3 == 1.0
+    assert report.metrics.mean_fact_coverage_at_1 == 0.5
+    assert report.metrics.mrr_at_5 == 1.0
+    assert item.retrieved[0].matched_fact_ids == ["first"]
+
+
+def test_v2_locator_requires_exact_normalized_anchor_and_scope() -> None:
+    with pytest.raises(ValidationError, match="scope its text anchors"):
+        RetrievalEvalDataset.model_validate(
+            {
+                "schema_version": 2,
+                "name": "unsafe",
+                "examples": [
+                    {
+                        "question": "question",
+                        "expected_document_id": "doc-1",
+                        "required_facts": [
+                            {
+                                "fact_id": "fact",
+                                "description": "Fact",
+                                "acceptable_evidence": [
+                                    {"text_anchors": ["Evidence a"]}
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+    dataset = RetrievalEvalDataset.model_validate(
+        {
+            "schema_version": 2,
+            "name": "exact",
+            "examples": [
+                {
+                    "question": "question",
+                    "expected_document_id": "doc-1",
+                    "required_facts": [
+                        {
+                            "fact_id": "fact",
+                            "description": "Fact",
+                            "acceptable_evidence": [
+                                {
+                                    "section_path": ["Requirements"],
+                                    "text_anchors": ["Evidence   A"],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    retriever = FakeRetriever({"question": [result("a", 1)]})
+
+    report = RetrievalEvaluator(retriever).evaluate(dataset)
+
+    assert report.results[0].first_relevant_rank is None
+
+
+def test_rejects_mixed_v1_and_v2_labels_and_duplicate_fact_ids() -> None:
+    base_fact = {
+        "fact_id": "fact",
+        "description": "Fact",
+        "acceptable_evidence": [
+            {
+                "section_path": ["Requirements"],
+                "text_anchors": ["Evidence"],
+            }
+        ],
+    }
+    with pytest.raises(ValidationError, match="either v1 relevance labels or v2"):
+        RetrievalEvalExample.model_validate(
+            {
+                "question": "question",
+                "expected_document_id": "doc-1",
+                "relevant_chunk_ids": ["a"],
+                "required_facts": [base_fact],
+            }
+        )
+    with pytest.raises(ValidationError, match="must be unique"):
+        RetrievalEvalExample.model_validate(
+            {
+                "question": "question",
+                "expected_document_id": "doc-1",
+                "required_facts": [base_fact, base_fact],
+            }
+        )
+
+
+def test_audit_reports_zero_and_unexpectedly_many_locator_matches() -> None:
+    dataset = RetrievalEvalDataset.model_validate(
+        {
+            "schema_version": 2,
+            "name": "audit",
+            "examples": [
+                {
+                    "question": "question",
+                    "expected_document_id": "doc-1",
+                    "required_facts": [
+                        {
+                            "fact_id": "fact",
+                            "description": "Fact",
+                            "acceptable_evidence": [
+                                {
+                                    "section_path": ["Requirements"],
+                                    "text_anchors": ["Evidence"],
+                                },
+                                {
+                                    "section_path": ["Requirements"],
+                                    "text_anchors": ["missing"],
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    audit = audit_dataset_locators(
+        dataset,
+        [result("a", 1), result("b", 2)],
+        max_expected_matches=1,
+    )
+
+    assert audit.locator_count == 2
+    assert audit.zero_match_count == 1
+    assert audit.unexpectedly_many_count == 1
+    assert [item.status for item in audit.locators] == [
+        "unexpectedly_many",
+        "zero_matches",
+    ]

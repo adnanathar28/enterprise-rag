@@ -9,6 +9,7 @@ from typing import Any
 from brd_knowledge.core.config import get_settings
 from brd_knowledge.database.session import SessionLocal
 from brd_knowledge.embeddings.gte_modernbert import GteModernBertEmbeddingProvider
+from brd_knowledge.evaluation.retrieval import aggregate_metrics, evaluate_ranking
 from brd_knowledge.retrieval.experimental_reranking import (
     MODEL_NAME,
     MODEL_REVISION,
@@ -16,7 +17,7 @@ from brd_knowledge.retrieval.experimental_reranking import (
     rerank_chunks,
 )
 from brd_knowledge.retrieval.pgvector import PgVectorRetriever
-from brd_knowledge.schemas.evaluation import RetrievalEvalDataset, RetrievalEvalExample
+from brd_knowledge.schemas.evaluation import RetrievalEvalDataset
 from brd_knowledge.schemas.retrieval import RetrievedChunk
 
 
@@ -39,32 +40,6 @@ def load_dataset(path: Path) -> RetrievalEvalDataset:
     return RetrievalEvalDataset.model_validate_json(path.read_text(encoding="utf-8"))
 
 
-def is_relevant(example: RetrievalEvalExample, chunk: RetrievedChunk) -> bool:
-    if chunk.document_id != example.expected_document_id:
-        return False
-    if example.relevant_chunk_ids:
-        return chunk.chunk_id in example.relevant_chunk_ids
-    return any(
-        (not target.section_path or chunk.section_path == target.section_path)
-        and (
-            not target.pages
-            or any(chunk.page_start <= page <= chunk.page_end for page in target.pages)
-        )
-        for target in example.section_page_targets
-    )
-
-
-def metrics(first_ranks: list[int | None]) -> dict[str, float | int]:
-    count = len(first_ranks)
-    return {
-        "example_count": count,
-        "recall_at_1": sum(rank is not None and rank <= 1 for rank in first_ranks) / count,
-        "recall_at_3": sum(rank is not None and rank <= 3 for rank in first_ranks) / count,
-        "recall_at_5": sum(rank is not None and rank <= 5 for rank in first_ranks) / count,
-        "mrr": sum(1.0 / rank if rank is not None else 0.0 for rank in first_ranks) / count,
-    }
-
-
 def chunk_summary(chunk: RetrievedChunk, *, rank: int, score: float) -> dict[str, Any]:
     return {
         "rank": rank,
@@ -76,10 +51,6 @@ def chunk_summary(chunk: RetrievedChunk, *, rank: int, score: float) -> dict[str
     }
 
 
-def first_relevant_rank(example: RetrievalEvalExample, chunks: list[RetrievedChunk]) -> int | None:
-    return next((rank for rank, chunk in enumerate(chunks, 1) if is_relevant(example, chunk)), None)
-
-
 def render_report(report: dict[str, Any]) -> str:
     dense = report["metrics"]["dense"]
     reranked = report["metrics"]["reranked"]
@@ -88,11 +59,18 @@ def render_report(report: dict[str, Any]) -> str:
         f"MODEL {report['reranker']['model_name']}@{report['reranker']['revision']}",
         f"MODEL_LOAD_SECONDS {report['latency']['model_load_seconds']:.6f}",
         "",
-        "STRATEGY  Recall@1  Recall@3  Recall@5  MRR",
-        f"dense     {dense['recall_at_1']:.3f}     {dense['recall_at_3']:.3f}     "
-        f"{dense['recall_at_5']:.3f}     {dense['mrr']:.3f}",
-        f"reranked  {reranked['recall_at_1']:.3f}     {reranked['recall_at_3']:.3f}     "
-        f"{reranked['recall_at_5']:.3f}     {reranked['mrr']:.3f}",
+        "STRATEGY  Any@1  Any@3  Any@5  Full@1  Full@3  Full@5  MeanFact@5  MRR@5",
+        f"dense     {dense['any_evidence_at_1']:.3f}  "
+        f"{dense['any_evidence_at_3']:.3f}  {dense['any_evidence_at_5']:.3f}  "
+        f"{dense['full_coverage_at_1']:.3f}   {dense['full_coverage_at_3']:.3f}   "
+        f"{dense['full_coverage_at_5']:.3f}   "
+        f"{dense['mean_fact_coverage_at_5']:.3f}       {dense['mrr_at_5']:.3f}",
+        f"reranked  {reranked['any_evidence_at_1']:.3f}  "
+        f"{reranked['any_evidence_at_3']:.3f}  {reranked['any_evidence_at_5']:.3f}  "
+        f"{reranked['full_coverage_at_1']:.3f}   "
+        f"{reranked['full_coverage_at_3']:.3f}   "
+        f"{reranked['full_coverage_at_5']:.3f}   "
+        f"{reranked['mean_fact_coverage_at_5']:.3f}       {reranked['mrr_at_5']:.3f}",
         "",
     ]
     for index, result in enumerate(report["results"], 1):
@@ -109,6 +87,14 @@ def render_report(report: dict[str, Any]) -> str:
                 "reranked_top_5="
                 + ", ".join(item["chunk_id"] for item in result["reranked_top_5"]),
                 "gold_ranks=" + json.dumps(result["gold_ranks"], sort_keys=True),
+                "dense_fact_ranks="
+                + json.dumps(result["dense_first_rank_by_fact"], sort_keys=True),
+                "reranked_fact_ranks="
+                + json.dumps(result["reranked_first_rank_by_fact"], sort_keys=True),
+                "dense_covered_facts_at_5="
+                + json.dumps(result["dense_covered_fact_ids_at_5"]),
+                "reranked_covered_facts_at_5="
+                + json.dumps(result["reranked_covered_fact_ids_at_5"]),
                 "",
             ]
         )
@@ -137,8 +123,8 @@ def main() -> None:
     model_load_seconds = perf_counter() - model_load_started
 
     results: list[dict[str, Any]] = []
-    dense_first_ranks: list[int | None] = []
-    reranked_first_ranks: list[int | None] = []
+    dense_evaluations = []
+    reranked_evaluations = []
     with SessionLocal() as session:
         retriever = PgVectorRetriever(session, embedding_provider)
         for example in dataset.examples:
@@ -161,22 +147,30 @@ def main() -> None:
             dense_top = candidates[: args.top_k]
             reranked_top = reranked[: args.top_k]
             reranked_chunks = [item.chunk for item in reranked]
-            dense_rank = first_relevant_rank(example, candidates)
-            reranked_rank = first_relevant_rank(example, reranked_chunks)
-            dense_first_ranks.append(
-                dense_rank if dense_rank is not None and dense_rank <= 5 else None
-            )
-            reranked_first_ranks.append(
-                reranked_rank if reranked_rank is not None and reranked_rank <= 5 else None
-            )
+            dense_evaluation = evaluate_ranking(example, candidates)
+            reranked_evaluation = evaluate_ranking(example, reranked_chunks)
+            dense_evaluations.append(dense_evaluation)
+            reranked_evaluations.append(reranked_evaluation)
 
             candidate_ranks = {chunk.chunk_id: chunk.rank for chunk in candidates}
             reranked_ranks = {item.chunk.chunk_id: item.rank for item in reranked}
             results.append(
                 {
                     "question": example.question,
-                    "dense_first_relevant_rank": dense_rank,
-                    "reranked_first_relevant_rank": reranked_rank,
+                    "dense_first_relevant_rank": dense_evaluation.first_relevant_rank,
+                    "reranked_first_relevant_rank": (
+                        reranked_evaluation.first_relevant_rank
+                    ),
+                    "dense_first_rank_by_fact": dense_evaluation.first_rank_by_fact,
+                    "reranked_first_rank_by_fact": (
+                        reranked_evaluation.first_rank_by_fact
+                    ),
+                    "dense_covered_fact_ids_at_5": (
+                        dense_evaluation.covered_fact_ids_at_5
+                    ),
+                    "reranked_covered_fact_ids_at_5": (
+                        reranked_evaluation.covered_fact_ids_at_5
+                    ),
                     "dense_seconds": dense_seconds,
                     "rerank_seconds": rerank_seconds,
                     "total_seconds": dense_seconds + rerank_seconds,
@@ -221,8 +215,8 @@ def main() -> None:
             "combined_total_seconds": sum(item["total_seconds"] for item in results),
         },
         "metrics": {
-            "dense": metrics(dense_first_ranks),
-            "reranked": metrics(reranked_first_ranks),
+            "dense": aggregate_metrics(dense_evaluations).model_dump(mode="json"),
+            "reranked": aggregate_metrics(reranked_evaluations).model_dump(mode="json"),
         },
         "results": results,
     }

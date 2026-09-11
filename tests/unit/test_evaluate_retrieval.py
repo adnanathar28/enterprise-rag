@@ -31,6 +31,16 @@ def test_report_highlights_failures_and_records_retrieved_evidence() -> None:
             recall_at_3=0,
             recall_at_5=0,
             mrr=0,
+            any_evidence_at_1=0,
+            any_evidence_at_3=0,
+            any_evidence_at_5=0,
+            full_coverage_at_1=0,
+            full_coverage_at_3=0,
+            full_coverage_at_5=0,
+            mean_fact_coverage_at_1=0,
+            mean_fact_coverage_at_3=0,
+            mean_fact_coverage_at_5=0,
+            mrr_at_5=0,
         ),
         results=[
             RetrievalExampleResult(
@@ -55,6 +65,12 @@ def test_report_highlights_failures_and_records_retrieved_evidence() -> None:
                 hit_at_1=False,
                 hit_at_3=False,
                 hit_at_5=False,
+                full_coverage_at_1=False,
+                full_coverage_at_3=False,
+                full_coverage_at_5=False,
+                mean_fact_coverage_at_1=0,
+                mean_fact_coverage_at_3=0,
+                mean_fact_coverage_at_5=0,
             )
         ],
     )
@@ -76,8 +92,8 @@ def test_report_highlights_failures_and_records_retrieved_evidence() -> None:
 
     output = load_script().render_report(report)
 
-    assert "dense             0.000     0.000     0.000  0.000" in output
-    assert "[1] dense=NONE lexical=NONE hybrid=NONE" in output
+    assert "dense          0.000  0.000  0.000" in output
+    assert "[1] dense=NONE lexical=NONE hybrid=NONE dense_facts=[]" in output
     assert "RECOVERED DENSE TOP-5 FAILURES\n- NONE" in output
     assert "DENSE TOP-5 SUCCESSES REGRESSED BY HYBRID\n- NONE" in output
 
@@ -97,3 +113,24 @@ def test_ids_dataset_loads_with_twenty_labeled_examples() -> None:
     assert {example.expected_document_id for example in dataset.examples} == {
         "IDS_BRD_V2_140526 (2).pdf"
     }
+
+
+def test_v2_datasets_load_with_required_fact_annotations() -> None:
+    expected_counts = {
+        "g60c_retrieval_eval_v2.json": (20, 37, 37),
+        "ids_retrieval_eval_v2.json": (20, 39, 50),
+        "versionrag_dogfood_retrieval_eval_v2.json": (5, 15, 24),
+    }
+
+    for filename, counts in expected_counts.items():
+        dataset = load_script().load_dataset(Path("data/evals") / filename)
+        question_count = len(dataset.examples)
+        fact_count = sum(len(example.required_facts) for example in dataset.examples)
+        locator_count = sum(
+            len(fact.acceptable_evidence)
+            for example in dataset.examples
+            for fact in example.required_facts
+        )
+
+        assert dataset.schema_version == 2
+        assert (question_count, fact_count, locator_count) == counts

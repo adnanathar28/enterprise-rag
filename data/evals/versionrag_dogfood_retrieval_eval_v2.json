@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "name": "VersionRAG paper dogfood retrieval evaluation v2",
+  "examples": [
+    {
+      "question": "What three fundamental query types does VersionRAG identify, and what does each one retrieve?",
+      "expected_document_id": "0a56f703948a44148a7caf8bc3d2e196",
+      "required_facts": [
+        {"fact_id": "content_retrieval", "description": "Content Retrieval retrieves information from a specific version.", "acceptable_evidence": [{"section_path": ["3.1 Problem Formulation."], "pages": [3], "text_anchors": ["Content Retrieval - retrieving information from a specific version"]}]},
+        {"fact_id": "version_retrieval", "description": "Version Retrieval identifies available versions or version metadata.", "acceptable_evidence": [{"section_path": ["3.1 Problem Formulation."], "pages": [3], "text_anchors": ["Version Retrieval - identifying available versions or version metadata"]}]},
+        {"fact_id": "change_retrieval", "description": "Change Retrieval detects modifications between versions.", "acceptable_evidence": [{"section_path": ["3.1 Problem Formulation."], "pages": [3], "text_anchors": ["Change Retrieval - detecting modifications between versions"]}]}
+      ]
+    },
+    {
+      "question": "For each of the three LLMs evaluated, how many input tokens did VersionRAG require during indexing, and how long did indexing take?",
+      "expected_document_id": "0a56f703948a44148a7caf8bc3d2e196",
+      "required_facts": [
+        {"fact_id": "deepseek_resources", "description": "DeepSeek-R1 70B used 186K input tokens and took 25 minutes.", "acceptable_evidence": [{"source_table_id": "tables-8", "section_path": ["B.3 Resource Consumption Comparison"], "pages": [15], "text_anchors": ["DeepSeek-R1 70B | VersionRAG | 186 | 38 | 0.17 | 25min"]}]},
+        {"fact_id": "gpt4o_resources", "description": "GPT-4o Mini used 184K input tokens and took 20 minutes.", "acceptable_evidence": [{"source_table_id": "tables-8", "section_path": ["B.3 Resource Consumption Comparison"], "pages": [15], "text_anchors": ["GPT-4o Mini | VersionRAG | 184 | 54 | 0.07 | 20min"]}]},
+        {"fact_id": "llama_resources", "description": "Llama 3 8B used 194K input tokens and took 24 minutes.", "acceptable_evidence": [{"source_table_id": "tables-8", "section_path": ["B.3 Resource Consumption Comparison"], "pages": [15], "text_anchors": ["Llama 3 8B | VersionRAG | 194 | 32 | 0.01 | 24min"]}]}
+      ]
+    },
+    {
+      "question": "What overall accuracy did Naive RAG, GraphRAG, and VersionRAG achieve when using DeepSeek-R1 70B?",
+      "expected_document_id": "0a56f703948a44148a7caf8bc3d2e196",
+      "required_facts": [
+        {"fact_id": "naive_accuracy", "description": "Naive RAG achieved 58% overall accuracy.", "acceptable_evidence": [{"section_path": ["6 Results and Analysis"], "pages": [6], "text_anchors": ["Naive RAG (58%)"]}, {"source_table_id": "tables-4", "pages": [6], "text_anchors": ["DeepSeek-R1 70B", "58.0 64.0 90.0"]}]},
+        {"fact_id": "graph_accuracy", "description": "GraphRAG achieved 64% overall accuracy.", "acceptable_evidence": [{"section_path": ["6 Results and Analysis"], "pages": [6], "text_anchors": ["GraphRAG (64%)"]}, {"source_table_id": "tables-4", "pages": [6], "text_anchors": ["DeepSeek-R1 70B", "58.0 64.0 90.0"]}]},
+        {"fact_id": "versionrag_accuracy", "description": "VersionRAG achieved 90% overall accuracy.", "acceptable_evidence": [{"section_path": ["6 Results and Analysis"], "pages": [6], "text_anchors": ["VersionRAG with DeepSeekR1 70B achieves 90% overall accuracy"]}, {"source_table_id": "tables-4", "pages": [6], "text_anchors": ["DeepSeek-R1 70B", "58.0 64.0 90.0"]}]}
+      ]
+    },
+    {
+      "question": "What chunking did VersionRAG use, what embedding model did all systems use, and what similarity metric did the Naive RAG baseline use?",
+      "expected_document_id": "0a56f703948a44148a7caf8bc3d2e196",
+      "required_facts": [
+        {"fact_id": "versionrag_chunking", "description": "VersionRAG used 512-token segments with 50-token overlap.", "acceptable_evidence": [{"section_path": ["5.2 Experimental Configuration"], "pages": [5, 6], "text_anchors": ["Documents are chunked into 512-token segments with 50-token overlap."]}]},
+        {"fact_id": "shared_embedding", "description": "All systems used text-embedding-3-small.", "acceptable_evidence": [{"section_path": ["5.2 Experimental Configuration"], "pages": [5], "text_anchors": ["All systems use OpenAI's text-embedding-3-small"]}, {"section_path": ["E.1 System Architecture and Tools"], "pages": [20], "text_anchors": ["text-embedding-3-small : OpenAI embedding model for all text representations"]}]},
+        {"fact_id": "baseline_similarity", "description": "The Naive RAG baseline used cosine similarity.", "acceptable_evidence": [{"section_path": ["5.2 Experimental Configuration"], "pages": [5], "text_anchors": ["It retrieves top-5 chunks based on cosine similarity without version awareness."]}, {"section_path": ["E.6 Baseline RAG Implementation"], "pages": [22], "text_anchors": ["Top-5 chunks retrieved based on cosine similarity"]}]}
+      ],
+      "notes": "The original dogfood wording implied that cosine similarity was documented for VersionRAG. The paper states it for the Naive RAG baseline, so this v2 question makes the scopes explicit."
+    },
+    {
+      "question": "Why does the paper argue that standard RAG and GraphRAG struggle with version-sensitive questions, and how does VersionRAG address those limitations?",
+      "expected_document_id": "0a56f703948a44148a7caf8bc3d2e196",
+      "required_facts": [
+        {"fact_id": "standard_rag_limitation", "description": "Standard RAG conflates semantically similar content from different versions and lacks temporal validity checks.", "acceptable_evidence": [{"section_path": ["1 Introduction"], "pages": [1, 2], "text_anchors": ["standard RAG retrieves semantically similar content from multiple versions", "version conflation leads to incorrect or contradictory answers"]}, {"section_path": ["7 Discussion"], "pages": [7, 8], "text_anchors": ["inability to distinguish between version-valid and version-invalid information"]}]},
+        {"fact_id": "graphrag_limitation", "description": "GraphRAG lacks explicit version-transition and change-tracking relationships.", "acceptable_evidence": [{"section_path": ["1 Introduction"], "pages": [1, 2], "text_anchors": ["version transitions are not explicitly modeled in the graph structure"]}, {"section_path": ["7 Discussion"], "pages": [7, 8], "text_anchors": ["version transitions are not explicit relationships that can be extracted from text"]}]},
+        {"fact_id": "versionrag_solution", "description": "VersionRAG explicitly models versions and changes and routes queries through intent-appropriate retrieval paths.", "acceptable_evidence": [{"section_path": ["Abstract"], "pages": [1], "text_anchors": ["explicitly models document evolution through a hierarchical graph structure", "routes queries through specialized paths based on intent classification"]}, {"section_path": ["3.2 Version-Aware Graph Structure."], "pages": [3], "text_anchors": ["Version nodes capture specific document versions", "Change nodes represent modifications between versions"]}, {"section_path": ["4.2 Hybrid Retrieval Strategy."], "pages": [4], "text_anchors": ["routes queries through appropriate retrieval paths based on their intent", "Version-aware filtering constrains vector search to specific versions"]}]}
+      ]
+    }
+  ]
+}

@@ -36,7 +36,8 @@ def render_report(report: RetrievalComparisonReport) -> str:
         f"DATASET {dataset_name}",
         f"QUESTIONS {report.dense.metrics.example_count}",
         "",
-        "STRATEGY       Recall@1  Recall@3  Recall@5  MRR",
+        "STRATEGY       Any@1  Any@3  Any@5  Full@1  Full@3  Full@5  "
+        "MeanFact@1  MeanFact@3  MeanFact@5  MRR@5",
     ]
     for name, strategy_report in (
         ("dense", report.dense),
@@ -45,16 +46,23 @@ def render_report(report: RetrievalComparisonReport) -> str:
     ):
         metrics = strategy_report.metrics
         lines.append(
-            f"{name:<14} {metrics.recall_at_1:>8.3f}  {metrics.recall_at_3:>8.3f}  "
-            f"{metrics.recall_at_5:>8.3f}  {metrics.mrr:>5.3f}"
+            f"{name:<14} {metrics.any_evidence_at_1:>5.3f}  "
+            f"{metrics.any_evidence_at_3:>5.3f}  {metrics.any_evidence_at_5:>5.3f}  "
+            f"{metrics.full_coverage_at_1:>6.3f}  "
+            f"{metrics.full_coverage_at_3:>6.3f}  "
+            f"{metrics.full_coverage_at_5:>6.3f}  "
+            f"{metrics.mean_fact_coverage_at_1:>10.3f}  "
+            f"{metrics.mean_fact_coverage_at_3:>10.3f}  "
+            f"{metrics.mean_fact_coverage_at_5:>10.3f}  {metrics.mrr_at_5:>5.3f}"
         )
-    lines.extend(["", "PER-QUESTION FIRST RELEVANT RANK"])
+    lines.extend(["", "PER-QUESTION FIRST RELEVANT RANK AND DENSE FACT COVERAGE@5"])
     for index, item in enumerate(report.per_question, 1):
         dense_rank = item.dense_first_relevant_rank or "NONE"
         lexical_rank = item.lexical_first_relevant_rank or "NONE"
         hybrid_rank = item.hybrid_first_relevant_rank or "NONE"
         lines.append(
             f"[{index}] dense={dense_rank} lexical={lexical_rank} hybrid={hybrid_rank} "
+            f"dense_facts={report.dense.results[index - 1].covered_fact_ids_at_5} "
             f"question={item.question}"
         )
     lines.extend(["", "RECOVERED DENSE TOP-5 FAILURES"])

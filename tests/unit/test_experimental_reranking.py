@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from brd_knowledge.evaluation.retrieval import aggregate_metrics, evaluate_ranking
 from brd_knowledge.retrieval.experimental_reranking import rerank_chunks
+from brd_knowledge.schemas.evaluation import RetrievalEvalExample
 from brd_knowledge.schemas.retrieval import RetrievedChunk
 
 
@@ -64,3 +66,43 @@ def test_rejects_wrong_score_count() -> None:
 def test_rejects_invalid_requests(query: str, top_k: int) -> None:
     with pytest.raises(ValueError):
         rerank_chunks(query, [candidate("a", 1)], FakeScorer([0.5]), top_k=top_k)
+
+
+def test_reranked_chunks_use_shared_fact_coverage_metrics() -> None:
+    example = RetrievalEvalExample.model_validate(
+        {
+            "question": "question",
+            "expected_document_id": "doc-1",
+            "required_facts": [
+                {
+                    "fact_id": "a",
+                    "description": "A",
+                    "acceptable_evidence": [
+                        {
+                            "section_path": ["Section"],
+                            "text_anchors": ["Text for a"],
+                        }
+                    ],
+                },
+                {
+                    "fact_id": "b",
+                    "description": "B",
+                    "acceptable_evidence": [
+                        {
+                            "section_path": ["Section"],
+                            "text_anchors": ["Text for b"],
+                        }
+                    ],
+                },
+            ],
+        }
+    )
+    reranked = [candidate("a", 1), candidate("x", 2), candidate("b", 3)]
+
+    evaluation = evaluate_ranking(example, reranked)
+    metrics = aggregate_metrics([evaluation])
+
+    assert metrics.any_evidence_at_1 == 1
+    assert metrics.full_coverage_at_1 == 0
+    assert metrics.full_coverage_at_3 == 1
+    assert metrics.mean_fact_coverage_at_1 == 0.5

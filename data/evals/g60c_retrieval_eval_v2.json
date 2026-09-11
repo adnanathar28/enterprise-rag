@@ -1,0 +1,141 @@
+{
+  "schema_version": 2,
+  "name": "G60c retrieval evaluation v2",
+  "examples": [
+    {
+      "question": "What downstream development activities use this user requirements document as their basis?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "design", "description": "Design uses the document as its basis.", "acceptable_evidence": [{"section_path": ["1.1 PURPOSE"], "pages": [9], "text_anchors": ["subsequent development activities including design, implementation, testing and post-implementation review"]}]},
+        {"fact_id": "implementation", "description": "Implementation uses the document as its basis.", "acceptable_evidence": [{"section_path": ["1.1 PURPOSE"], "pages": [9], "text_anchors": ["subsequent development activities including design, implementation, testing and post-implementation review"]}]},
+        {"fact_id": "testing", "description": "Testing uses the document as its basis.", "acceptable_evidence": [{"section_path": ["1.1 PURPOSE"], "pages": [9], "text_anchors": ["subsequent development activities including design, implementation, testing and post-implementation review"]}]},
+        {"fact_id": "post_implementation_review", "description": "Post-implementation review uses the document as its basis.", "acceptable_evidence": [{"section_path": ["1.1 PURPOSE"], "pages": [9], "text_anchors": ["subsequent development activities including design, implementation, testing and post-implementation review"]}]}
+      ]
+    },
+    {
+      "question": "How are inventory records currently maintained before the proposed system?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "manual_storage", "description": "Staff manually process records kept in paper folders, spreadsheets, and word-processing documents.", "acceptable_evidence": [{"section_path": ["1.2 PROJECT BACKGROUND"], "pages": [9], "text_anchors": ["inventory records are manually processed", "paper folders", "spreadsheets or other word document formats"]}]}]
+    },
+    {
+      "question": "Which project objective addresses loss or surplus of inventory items?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "loss_surplus_control", "description": "Strengthen control and monitoring of loss or surplus inventory items.", "acceptable_evidence": [{"section_path": ["1.5 PROJECT OBJECTIVES"], "pages": [11], "text_anchors": ["strengthen the control and monitoring of loss or surplus of inventory items"]}]}]
+    },
+    {
+      "question": "What information should be captured for each public engagement activity?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "activity_type", "description": "Activity type.", "acceptable_evidence": [{"source_table_id": "page_11_tables-0", "pages": [11], "text_anchors": ["Activity Type"]}]},
+        {"fact_id": "dates", "description": "Dates.", "acceptable_evidence": [{"source_table_id": "page_11_tables-0", "pages": [11], "text_anchors": ["Date(s)"]}]},
+        {"fact_id": "stakeholders", "description": "Stakeholder group.", "acceptable_evidence": [{"source_table_id": "page_11_tables-0", "pages": [11], "text_anchors": ["Stakeholder Group"]}]},
+        {"fact_id": "feedback", "description": "Key feedback received.", "acceptable_evidence": [{"source_table_id": "page_11_tables-0", "pages": [11], "text_anchors": ["Key Feedback Received"]}]},
+        {"fact_id": "priority", "description": "Priority.", "acceptable_evidence": [{"source_table_id": "page_11_tables-0", "pages": [11], "text_anchors": ["Priority"]}]},
+        {"fact_id": "solution", "description": "Proposed solution.", "acceptable_evidence": [{"source_table_id": "page_11_tables-0", "pages": [11], "text_anchors": ["Proposed Solution"]}]}
+      ]
+    },
+    {
+      "question": "How should fragile old paper documents be handled during scanning?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "flatbed", "description": "Use flatbed scanning for fragile documents.", "acceptable_evidence": [{"source_table_id": "page_13_tables-0", "pages": [13], "text_anchors": ["Use flatbed scanning for fragile documents"]}]},
+        {"fact_id": "cutoff", "description": "Define a historical cut-off for documents to scan.", "acceptable_evidence": [{"source_table_id": "page_13_tables-0", "pages": [13], "text_anchors": ["define a cut-off time for not to scan all documents"]}]}
+      ]
+    },
+    {
+      "question": "Will implementation use a parallel run or a direct migration approach?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "direct_no_parallel", "description": "Implementation uses direct migration with no parallel run.", "acceptable_evidence": [{"pages": [14], "text_anchors": ["Direct migration approach will be used to implement the system.", "No parallel run will be performed."]}]}]
+    },
+    {
+      "question": "Who approves and controls daily inventory record updates?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "inventory_control_officer", "description": "The Inventory Control Officer approves, reviews, and controls daily inventory record updates.", "acceptable_evidence": [{"source_table_id": "page_16_tables-0", "pages": [16], "text_anchors": ["Inventory Control Officer", "approval, review and control of the daily operation and update of inventory records"]}]}]
+    },
+    {
+      "question": "What business process ID covers trade-in of inventory?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "trade_in_id", "description": "BP-005 covers trade-in of inventory.", "acceptable_evidence": [{"source_table_id": "page_17_tables-0", "pages": [17], "text_anchors": ["BP-005 | Trade-in of Inventory"]}]}]
+    },
+    {
+      "question": "Who must approve a new inventory record when the invoice is at least HK$1 million?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "manager_approval", "description": "The Inventory Control Manager must approve it.", "acceptable_evidence": [{"source_table_id": "page_24_tables-0", "pages": [24], "text_anchors": ["invoice amount >=HK$1M | Inventory Control Manager"]}]}]
+    },
+    {
+      "question": "What fields are mandatory when creating a draft inventory item record?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "mandatory_fields", "description": "The evidence must contain the complete eleven-field mandatory list.", "acceptable_evidence": [{"source_table_id": "page_25_tables-1", "pages": [25], "text_anchors": ["1. Item Category Code", "2. Item No.", "3. Purchase Order No.", "4. Item Description", "5. Quantity", "6. Serial No.", "7. Location", "8. Owned by (Section)", "9. Owned by Person", "10. Date Received", "11. Item Price in HKD"]}]}]
+    },
+    {
+      "question": "Why must an invoice be linked to each individual inventory item instead of the whole record?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "individual_link_reason", "description": "Individual items can be transferred separately, so item-level invoice links aid retrieval and maintenance.", "acceptable_evidence": [{"source_table_id": "page_26_tables-0", "pages": [26], "text_anchors": ["individual items under one inventory record may be transferred", "link the invoice to each item", "ease of retrieval and maintenance use"]}]}]
+    },
+    {
+      "question": "What audit information must be retained before and after an inventory transaction changes?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "before_image", "description": "The before-image must be retained.", "acceptable_evidence": [{"source_table_id": "page_29_tables-0", "pages": [29], "text_anchors": ["store the before-image and after-image of changes on the inventory transactions"]}]},
+        {"fact_id": "after_image", "description": "The after-image must be retained.", "acceptable_evidence": [{"source_table_id": "page_29_tables-0", "pages": [29], "text_anchors": ["store the before-image and after-image of changes on the inventory transactions"]}]}
+      ]
+    },
+    {
+      "question": "How should the system prevent users from opening functions they are not authorized to access?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "disable_unauthorized_menu", "description": "Disallow users from clicking menu items for which they lack access rights.", "acceptable_evidence": [{"source_table_id": "page_30_tables-0", "pages": [30], "text_anchors": ["Users should be disallowed to click into menu items in which no access rights are granted."]}]}]
+    },
+    {
+      "question": "When are backups performed and what is the maximum recovery time after system failure?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "backup_frequency", "description": "System and data backups are daily and monthly.", "acceptable_evidence": [{"source_table_id": "page_31_tables-1", "pages": [31], "text_anchors": ["daily and monthly system and data backup"]}]},
+        {"fact_id": "backup_time", "description": "Backups are completed at midnight.", "acceptable_evidence": [{"source_table_id": "page_31_tables-1", "pages": [31], "text_anchors": ["performed and completed at midnight"]}]},
+        {"fact_id": "recovery_limit", "description": "Recovery must take no more than six hours.", "acceptable_evidence": [{"source_table_id": "page_31_tables-1", "pages": [31], "text_anchors": ["system recovery", "shall not exceed 6 hours"]}]}
+      ]
+    },
+    {
+      "question": "What minimum processing capacity must the disaster recovery site provide?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "dr_capacity", "description": "At least 30% of production-site processing capability.", "acceptable_evidence": [{"source_table_id": "page_32_tables-0", "pages": [32], "text_anchors": ["no less than 30% processing capabilities of the production site"]}]}]
+    },
+    {
+      "question": "Which Chinese character form is required, and what symbols must passwords accept?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "traditional_chinese", "description": "Chinese data must use Traditional Chinese.", "acceptable_evidence": [{"source_table_id": "page_34_tables-0", "pages": [34], "text_anchors": ["All Chinese data should be in Traditional Chinese."]}]},
+        {"fact_id": "password_symbols", "description": "Passwords must accept symbols including *, $, #, and &.", "acceptable_evidence": [{"source_table_id": "page_34_tables-0", "pages": [34], "text_anchors": ["passwords must allow input of symbols including *, $, # , &"]}]}
+      ]
+    },
+    {
+      "question": "During which hours must the system achieve 99.5 percent availability?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [{"fact_id": "availability_hours", "description": "From 8:00 a.m. to 6:30 p.m., Monday through Saturday.", "acceptable_evidence": [{"source_table_id": "page_38_tables-0", "pages": [38], "text_anchors": ["99.5% during normal office hours", "from 8:00 a.m. to 6:30 p.m. Monday to Saturday"]}]}]
+    },
+    {
+      "question": "What response-time targets apply to data enquiries and inventory transaction reports?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "enquiry_response", "description": "Data enquiry and update transactions target four seconds for the stated percentage.", "acceptable_evidence": [{"source_table_id": "page_39_tables-0", "pages": [39], "text_anchors": ["4 seconds for xx % of transactions for data enquiry and data update"]}]},
+        {"fact_id": "report_response", "description": "Inventory transaction reports target thirty seconds.", "acceptable_evidence": [{"source_table_id": "page_39_tables-0", "pages": [39], "text_anchors": ["30 seconds for report generation of inventory transactions"]}]}
+      ]
+    },
+    {
+      "question": "What annual data growth rate is expected, and when are disposed inventory records removed?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "growth_rate", "description": "Expected annual data growth is approximately 5%.", "acceptable_evidence": [{"source_table_id": "page_40_tables-0", "pages": [40], "text_anchors": ["expected annual growth rate of data is about 5%"]}]},
+        {"fact_id": "disposed_removal", "description": "Disposed records are archived and removed on 31 December after xx years.", "acceptable_evidence": [{"source_table_id": "page_40_tables-0", "pages": [40], "text_anchors": ["Disposed inventory items shall be archived and removed from the system as at 31 Dec", "disposed for xx years"]}]}
+      ]
+    },
+    {
+      "question": "What must be prepared before the big-bang rollout if no system migration is needed?",
+      "expected_document_id": "G60c_Best_Practices_for_Business_Analyst_Appendix_C_v2_0",
+      "required_facts": [
+        {"fact_id": "category_codes", "description": "Inventory category codes must be preloaded.", "acceptable_evidence": [{"pages": [42], "text_anchors": ["pre-loading of code tables such as inventory category code, item codes and user profiles are required before system roll-out"]}]},
+        {"fact_id": "item_codes", "description": "Item codes must be preloaded.", "acceptable_evidence": [{"pages": [42], "text_anchors": ["pre-loading of code tables such as inventory category code, item codes and user profiles are required before system roll-out"]}]},
+        {"fact_id": "user_profiles", "description": "User profiles must be preloaded.", "acceptable_evidence": [{"pages": [42], "text_anchors": ["pre-loading of code tables such as inventory category code, item codes and user profiles are required before system roll-out"]}]}
+      ]
+    }
+  ]
+}
