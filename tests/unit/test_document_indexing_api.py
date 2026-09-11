@@ -24,7 +24,9 @@ from brd_knowledge.services.file_intake_service import FileIntakeService
 
 
 @pytest.fixture(autouse=True)
-def clear_overrides():
+def clear_overrides(monkeypatch):
+    scorer = Mock()
+    monkeypatch.setattr("brd_knowledge.main.reranker_scorer_dependency", lambda: scorer)
     yield
     app.dependency_overrides.clear()
 

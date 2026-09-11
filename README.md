@@ -183,8 +183,9 @@ handle any redirected output accordingly. The same orchestration is available at
 `POST /documents/{document_id}/questions` for the frontend.
 
 The reranker runs locally and does not use a paid API. Its pinned model is loaded
-once per API process on the first question; deployment must make that Hugging Face
-revision available in the local model cache or permit its initial download.
+once per API process during application startup. Startup fails if initialization
+fails; deployment must make that Hugging Face revision available in the local model
+cache or permit its initial download.
 
 ### Gemini baseline configuration
 
