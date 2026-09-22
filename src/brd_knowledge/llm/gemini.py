@@ -15,6 +15,10 @@ from brd_knowledge.core.exceptions import (
     MalformedGenerationResponse,
     PromptBudgetExceeded,
 )
+from brd_knowledge.core.generation_diagnostics import (
+    log_generation_failure,
+    record_gemini_response,
+)
 from brd_knowledge.llm.base import (
     LLMConfiguration,
     LLMGenerationRequest,
@@ -115,14 +119,34 @@ class GeminiLLMProvider(LLMProvider):
         except (errors.APIError, httpx.HTTPError) as exc:
             raise GenerationProviderError("Gemini generation failed.") from exc
         except (ValidationError, json.JSONDecodeError) as exc:
-            raise MalformedGenerationResponse(
+            error = MalformedGenerationResponse(
                 "Gemini returned a malformed response envelope."
-            ) from exc
+            )
+            log_generation_failure(
+                "provider_response_extraction", error, model=self._configuration.model
+            )
+            raise error from exc
+        record_gemini_response(
+            model=self._configuration.model,
+            model_version=response.model_version,
+            finish_reason=None,
+            provider_request_id=response.response_id,
+        )
         if response.prompt_feedback and response.prompt_feedback.block_reason:
             raise GenerationBlockedError("Gemini blocked the prompt.")
         if not response.candidates or len(response.candidates) != 1:
-            raise MalformedGenerationResponse("Gemini returned no single answer candidate.")
+            error = MalformedGenerationResponse("Gemini returned no single answer candidate.")
+            log_generation_failure(
+                "provider_response_extraction", error, model=self._configuration.model
+            )
+            raise error
         candidate = response.candidates[0]
+        record_gemini_response(
+            model=self._configuration.model,
+            model_version=response.model_version,
+            finish_reason=(candidate.finish_reason.name if candidate.finish_reason else None),
+            provider_request_id=response.response_id,
+        )
         if candidate.finish_reason == types.FinishReason.MAX_TOKENS:
             raise IncompleteGenerationError("Gemini exhausted the output token budget.")
         if candidate.finish_reason in {
@@ -137,12 +161,25 @@ class GeminiLLMProvider(LLMProvider):
             raise IncompleteGenerationError("Gemini did not finish normally.")
         parts = candidate.content.parts if candidate.content else None
         answer_text = "".join(part.text or "" for part in (parts or []) if not part.thought)
+        record_gemini_response(
+            model=self._configuration.model,
+            model_version=response.model_version,
+            finish_reason=candidate.finish_reason.name,
+            provider_request_id=response.response_id,
+            raw_generated_text=answer_text,
+        )
         try:
             payload = json.loads(answer_text)
         except (ValueError, TypeError) as exc:
-            raise MalformedGenerationResponse("Gemini returned invalid JSON.") from exc
+            error = MalformedGenerationResponse("Gemini returned invalid JSON.")
+            log_generation_failure("json_parsing", error, model=self._configuration.model)
+            raise error from exc
         if not isinstance(payload, dict):
-            raise MalformedGenerationResponse("Gemini returned a non-object JSON answer.")
+            error = MalformedGenerationResponse("Gemini returned a non-object JSON answer.")
+            log_generation_failure(
+                "json_parsing", error, model=self._configuration.model, payload=payload
+            )
+            raise error
         usage = response.usage_metadata
         return LLMGenerationResponse(
             payload=payload,

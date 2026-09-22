@@ -226,6 +226,15 @@ Schema conformance and valid citation IDs do not establish that every claim is
 supported. This slice adds neither answer evaluation nor semantic citation checks.
 Quality, account access, actual latency, and live API behavior remain unmeasured.
 
+Grounded-generation failures emit a structured `grounded_generation_failure` warning
+with a request ID, document ID, failure stage, exception, and available Gemini model,
+version, and finish reason. Logs omit generated answer text by default. To inspect
+the raw failed Gemini text and parsed payload during local/evaluation dogfooding, set
+`GENERATION_DIAGNOSTIC_PAYLOADS=true` with `APP_ENV=local` or `APP_ENV=evaluation`,
+then restart the API and reproduce the question. The warning appears in the API
+terminal. Disable the option after diagnosis and handle that terminal output as
+document-sensitive material. The API error response and citation checks are unchanged.
+
 The selected model is a low-cost baseline for bounded document questions, not a
 proven BRD-quality winner. At documented standard paid text rates ($0.25/M input,
 $1.50/M output including thinking), 5,000 input and 1,024 output tokens cost about

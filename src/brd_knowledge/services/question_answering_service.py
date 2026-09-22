@@ -6,6 +6,7 @@ from typing import Protocol
 
 from brd_knowledge.context import ContextBuilder
 from brd_knowledge.core.config import Settings
+from brd_knowledge.core.generation_diagnostics import generation_diagnostic_scope
 from brd_knowledge.generation import GroundedAnswerService
 from brd_knowledge.llm.base import LLMProvider
 from brd_knowledge.llm.factory import create_llm_provider
@@ -62,24 +63,36 @@ class QuestionAnsweringService:
             model=request.model,
         )
         try:
-            retrieved = self._retriever.search(
-                request.question,
-                top_k=top_k,
-                document_id=document_id,
-            )
-            context = self._context_builder.build(
-                ContextBuildRequest(
-                    retrieved_chunks=retrieved,
-                    max_characters=max_context_characters,
+            with generation_diagnostic_scope(
+                document_id,
+                credential=(
+                    self._settings.gemini_api_key.get_secret_value()
+                    if self._settings.gemini_api_key is not None
+                    else None
+                ),
+                include_payload=(
+                    self._settings.app_env in {"local", "development", "evaluation"}
+                    and self._settings.generation_diagnostic_payloads
+                ),
+            ):
+                retrieved = self._retriever.search(
+                    request.question,
+                    top_k=top_k,
+                    document_id=document_id,
                 )
-            )
-            answer = GroundedAnswerService(provider).generate(
-                GroundedAnswerRequest(
-                    question=request.question,
-                    context=context,
-                    max_output_tokens=max_output_tokens,
+                context = self._context_builder.build(
+                    ContextBuildRequest(
+                        retrieved_chunks=retrieved,
+                        max_characters=max_context_characters,
+                    )
                 )
-            )
+                answer = GroundedAnswerService(provider).generate(
+                    GroundedAnswerRequest(
+                        question=request.question,
+                        context=context,
+                        max_output_tokens=max_output_tokens,
+                    )
+                )
         finally:
             provider.close()
         return DocumentQuestionResponse(

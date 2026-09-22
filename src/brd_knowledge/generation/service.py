@@ -6,6 +6,10 @@ from brd_knowledge.core.exceptions import (
     MalformedGenerationResponse,
     PromptBudgetExceeded,
 )
+from brd_knowledge.core.generation_diagnostics import (
+    log_generation_failure,
+    record_generation_model,
+)
 from brd_knowledge.generation.citations import validate_and_resolve_citations
 from brd_knowledge.generation.prompts import SYSTEM_PROMPT, build_user_prompt
 from brd_knowledge.llm.base import LLMGenerationRequest, LLMProvider
@@ -35,6 +39,7 @@ class GroundedAnswerService:
 
         user_prompt = build_user_prompt(request.question, request.context)
         configuration = self._provider.configuration
+        record_generation_model(configuration.model)
         if (
             configuration.max_output_tokens is not None
             and request.max_output_tokens > configuration.max_output_tokens
@@ -68,9 +73,16 @@ class GroundedAnswerService:
         try:
             payload = ModelAnswerPayload.model_validate(response.payload)
         except ValidationError as exc:
-            raise MalformedGenerationResponse(
+            error = MalformedGenerationResponse(
                 "The provider response did not match the grounded answer schema."
-            ) from exc
+            )
+            log_generation_failure(
+                "model_answer_payload_validation",
+                error,
+                model=configuration.model,
+                payload=response.payload,
+            )
+            raise error from exc
 
         answer_text, cited_ids, citations = validate_and_resolve_citations(
             payload,

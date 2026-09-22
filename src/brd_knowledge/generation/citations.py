@@ -1,6 +1,7 @@
 import re
 
 from brd_knowledge.core.exceptions import InvalidCitationError
+from brd_knowledge.core.generation_diagnostics import log_generation_failure
 from brd_knowledge.schemas.context import ConstructedContext, ContextEvidence
 from brd_knowledge.schemas.generation import ModelAnswerPayload, ResolvedCitation
 
@@ -15,7 +16,13 @@ def validate_and_resolve_citations(
     context: ConstructedContext,
 ) -> tuple[str, list[str], list[ResolvedCitation]]:
     evidence_by_id = {item.evidence_id: item for item in context.evidence}
-    normalized_answer_text, inline_ids = _normalize_inline_citations(payload.answer_text)
+    try:
+        normalized_answer_text, inline_ids = _normalize_inline_citations(payload.answer_text)
+    except InvalidCitationError as exc:
+        log_generation_failure(
+            "inline_citation_parsing", exc, payload=payload.model_dump(mode="json")
+        )
+        raise
     inline_ids = _deduplicate(inline_ids)
     declared_ids = _deduplicate(payload.cited_evidence_ids)
     unknown_ids = [
@@ -24,15 +31,23 @@ def validate_and_resolve_citations(
         if evidence_id not in evidence_by_id
     ]
     if unknown_ids:
-        raise InvalidCitationError(
-            f"Generated answer cites unknown evidence IDs: {', '.join(unknown_ids)}"
+        _reject(
+            "evidence_id_validation",
+            f"Generated answer cites unknown evidence IDs: {', '.join(unknown_ids)}",
+            payload,
         )
     if inline_ids != declared_ids:
-        raise InvalidCitationError(
-            "Inline citations must match cited_evidence_ids in first-use order."
+        _reject(
+            "cited_evidence_ids_consistency",
+            "Inline citations must match cited_evidence_ids in first-use order.",
+            payload,
         )
     if not payload.insufficient_evidence and not inline_ids:
-        raise InvalidCitationError("A sufficient answer must cite at least one evidence item.")
+        _reject(
+            "cited_evidence_ids_consistency",
+            "A sufficient answer must cite at least one evidence item.",
+            payload,
+        )
     return (
         normalized_answer_text,
         inline_ids,
@@ -58,6 +73,12 @@ def _normalize_inline_citations(answer_text: str) -> tuple[str, list[str]]:
 
 def _deduplicate(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
+
+
+def _reject(stage: str, message: str, payload: ModelAnswerPayload) -> None:
+    error = InvalidCitationError(message)
+    log_generation_failure(stage, error, payload=payload.model_dump(mode="json"))
+    raise error
 
 
 def _resolve(evidence: ContextEvidence) -> ResolvedCitation:

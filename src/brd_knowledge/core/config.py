@@ -14,6 +14,9 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    generation_diagnostic_payloads: bool = Field(
+        default=False, alias="GENERATION_DIAGNOSTIC_PAYLOADS"
+    )
     allowed_document_extensions: set[str] = Field(
         default={".pdf"},
         alias="ALLOWED_DOCUMENT_EXTENSIONS",

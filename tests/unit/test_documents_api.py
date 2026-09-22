@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any, Literal
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 from tests.unit.test_grounded_answer_generation import FakeProvider
 
@@ -16,7 +17,11 @@ from brd_knowledge.api.dependencies import (
     settings_dependency,
 )
 from brd_knowledge.core.config import Settings
-from brd_knowledge.core.exceptions import RetrievalRerankingError
+from brd_knowledge.core.exceptions import (
+    InvalidCitationError,
+    MalformedGenerationResponse,
+    RetrievalRerankingError,
+)
 from brd_knowledge.main import app
 from brd_knowledge.parsing.options import ParseOptions
 from brd_knowledge.schemas.document import DocumentMetadata, Page, ParsedDocument, ParserMetadata
@@ -440,6 +445,31 @@ def test_ask_document_question_maps_reranker_failure_to_503() -> None:
     assert response.status_code == 503
     assert response.json() == {"detail": "Evidence reranking is temporarily unavailable."}
     assert "sensitive detail" not in response.text
+
+
+@pytest.mark.parametrize("error", [InvalidCitationError, MalformedGenerationResponse])
+def test_ask_document_question_keeps_invalid_grounded_answer_response(
+    error: type[Exception],
+) -> None:
+    persistence_service = FakeDocumentPersistenceService()
+    question_service = MagicMock()
+    question_service.answer.side_effect = error("private diagnostic detail")
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+    app.dependency_overrides[embedding_provider_dependency] = lambda: SimpleNamespace(
+        configuration=object()
+    )
+    app.dependency_overrides[question_answering_service_dependency] = lambda: question_service
+
+    try:
+        response = TestClient(app).post(
+            "/documents/doc-001/questions", json={"question": "What happened?"}
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "The model returned an invalid grounded answer."}
+    assert "private diagnostic detail" not in response.text
 
 
 def test_capabilities_reports_provider_configuration_without_secrets() -> None:
