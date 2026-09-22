@@ -147,3 +147,8 @@ def test_parse_options_validate_split_page_range() -> None:
 
     with pytest.raises(ValueError, match="greater than 0"):
         ParseOptions(page_range=(1, 2), split_pages=True, page_timeout_seconds=0)
+
+
+def test_parse_options_reject_page_range_without_split_pages() -> None:
+    with pytest.raises(ValueError, match="A page range requires split_pages=true"):
+        ParseOptions(page_range=(1, 2))

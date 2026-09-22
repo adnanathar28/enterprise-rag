@@ -192,6 +192,55 @@ def test_accepts_grouped_citations_and_normalizes_them_for_display() -> None:
     assert [citation.chunk_id for citation in result.citations] == ["chunk-1", "chunk-2"]
 
 
+@pytest.mark.parametrize(
+    "bracketed_text",
+    ["[Table A]", "[VersionRAG]", "[Appendix B]", "[Figure 2]"],
+)
+def test_preserves_bracketed_prose_alongside_real_citation(bracketed_text: str) -> None:
+    answer_text = f"See {bracketed_text} for the result [E1]."
+    provider = FakeProvider(
+        {
+            "answer_text": answer_text,
+            "cited_evidence_ids": ["E1"],
+            "insufficient_evidence": False,
+        }
+    )
+
+    result = GroundedAnswerService(provider).generate(request())
+
+    assert result.answer_text == answer_text
+    assert result.cited_evidence_ids == ["E1"]
+    assert [citation.evidence_id for citation in result.citations] == ["E1"]
+
+
+def test_grouped_citations_normalize_without_altering_bracketed_prose() -> None:
+    provider = FakeProvider(
+        {
+            "answer_text": "See [Table A] and [VersionRAG] [E1, E2].",
+            "cited_evidence_ids": ["E1", "E2"],
+            "insufficient_evidence": False,
+        }
+    )
+
+    result = GroundedAnswerService(provider).generate(request(context_with_two_evidence()))
+
+    assert result.answer_text == "See [Table A] and [VersionRAG] [E1] [E2]."
+    assert result.cited_evidence_ids == ["E1", "E2"]
+
+
+def test_bracketed_prose_does_not_satisfy_required_citation() -> None:
+    provider = FakeProvider(
+        {
+            "answer_text": "The [VersionRAG] approach reports this result.",
+            "cited_evidence_ids": [],
+            "insufficient_evidence": False,
+        }
+    )
+
+    with pytest.raises(InvalidCitationError, match="must cite at least one evidence item"):
+        GroundedAnswerService(provider).generate(request())
+
+
 def test_rejects_unknown_evidence_inside_grouped_citation() -> None:
     provider = FakeProvider(
         {
@@ -210,6 +259,20 @@ def test_rejects_malformed_grouped_citation() -> None:
         {
             "answer_text": "The claim has malformed sources [E1; E2].",
             "cited_evidence_ids": ["E1", "E2"],
+            "insufficient_evidence": False,
+        }
+    )
+
+    with pytest.raises(InvalidCitationError, match="Malformed inline citation group"):
+        GroundedAnswerService(provider).generate(request(context_with_two_evidence()))
+
+
+@pytest.mark.parametrize("citation", ["[E0]", "[e1]", "[E1 E2]", "[E1; E2]"])
+def test_rejects_malformed_evidence_id_syntax(citation: str) -> None:
+    provider = FakeProvider(
+        {
+            "answer_text": f"Supported [E1], but malformed {citation}.",
+            "cited_evidence_ids": ["E1"],
             "insufficient_evidence": False,
         }
     )

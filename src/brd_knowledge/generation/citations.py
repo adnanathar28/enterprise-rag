@@ -5,10 +5,12 @@ from brd_knowledge.core.generation_diagnostics import log_generation_failure
 from brd_knowledge.schemas.context import ConstructedContext, ContextEvidence
 from brd_knowledge.schemas.generation import ModelAnswerPayload, ResolvedCitation
 
-BRACKETED_TEXT_PATTERN = re.compile(r"\[(\s*[A-Za-z][^\[\]]*)\]")
+BRACKETED_TEXT_PATTERN = re.compile(r"\[([^\[\]]*)\]")
 CITATION_GROUP_PATTERN = re.compile(
-    r"\s*([A-Za-z][A-Za-z0-9_-]*(?:\s*,\s*[A-Za-z][A-Za-z0-9_-]*)*)\s*"
+    r"\s*(E[1-9]\d*(?:\s*,\s*E[1-9]\d*)*)\s*"
 )
+# SOURCE1-style references remain invalid citation attempts, as before.
+CITATION_ATTEMPT_PATTERN = re.compile(r"\s*(?:E\d|SOURCE\d)", re.IGNORECASE)
 
 
 def validate_and_resolve_citations(
@@ -60,6 +62,8 @@ def _normalize_inline_citations(answer_text: str) -> tuple[str, list[str]]:
 
     def normalize_group(match: re.Match[str]) -> str:
         content = match.group(1)
+        if not CITATION_ATTEMPT_PATTERN.match(content):
+            return match.group(0)
         group = CITATION_GROUP_PATTERN.fullmatch(content)
         if group is None:
             raise InvalidCitationError(f"Malformed inline citation group: [{content}]")

@@ -271,6 +271,31 @@ def test_ingest_document_rejects_invalid_page_range(tmp_path: Path) -> None:
     assert persistence_service.calls == []
 
 
+def test_ingest_document_rejects_page_range_without_split_pages(tmp_path: Path) -> None:
+    intake_service = FakeFileIntakeService(tmp_path / "source_files")
+    ingestion_service = FakeIngestionService()
+    persistence_service = FakeDocumentPersistenceService()
+    app.dependency_overrides[file_intake_service_dependency] = lambda: intake_service
+    app.dependency_overrides[ingestion_service_dependency] = lambda: ingestion_service
+    app.dependency_overrides[document_persistence_service_dependency] = lambda: persistence_service
+
+    try:
+        client = TestClient(app)
+        response = client.post(
+            "/documents/ingest",
+            data={"page_start": "1", "page_end": "3"},
+            files={"file": ("sample.pdf", b"%PDF-1.7 synthetic", "application/pdf")},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert "A page range requires split_pages=true." in response.json()["detail"]
+    assert intake_service.calls == []
+    assert ingestion_service.calls == []
+    assert persistence_service.calls == []
+
+
 def test_ingest_document_returns_intake_validation_errors(tmp_path: Path) -> None:
     intake_service = FakeFileIntakeService(
         tmp_path / "source_files",

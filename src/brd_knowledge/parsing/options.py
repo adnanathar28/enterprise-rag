@@ -18,4 +18,6 @@ class ParseOptions(BaseModel):
                 )
         if self.split_pages and self.page_range is None:
             raise ValueError("Split-page parsing requires a page range.")
+        if self.page_range is not None and not self.split_pages:
+            raise ValueError("A page range requires split_pages=true.")
         return self
