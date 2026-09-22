@@ -98,39 +98,12 @@ def test_report_highlights_failures_and_records_retrieved_evidence() -> None:
     assert "DENSE TOP-5 SUCCESSES REGRESSED BY HYBRID\n- NONE" in output
 
 
-def test_real_dataset_loads_with_twenty_labeled_examples() -> None:
-    dataset = load_script().load_dataset(Path("data/evals/retrieval_eval.json"))
+def test_public_v2_dataset_loads_with_required_fact_annotations() -> None:
+    dataset = load_script().load_dataset(Path("tests/fixtures/retrieval_eval_v2.json"))
 
-    assert len(dataset.examples) == 20
-    assert all(example.relevant_chunk_ids for example in dataset.examples)
-
-
-def test_ids_dataset_loads_with_twenty_labeled_examples() -> None:
-    dataset = load_script().load_dataset(Path("data/evals/ids_retrieval_eval.json"))
-
-    assert len(dataset.examples) == 20
-    assert all(example.relevant_chunk_ids for example in dataset.examples)
-    assert {example.expected_document_id for example in dataset.examples} == {
-        "IDS_BRD_V2_140526 (2).pdf"
-    }
-
-
-def test_v2_datasets_load_with_required_fact_annotations() -> None:
-    expected_counts = {
-        "g60c_retrieval_eval_v2.json": (20, 37, 37),
-        "ids_retrieval_eval_v2.json": (20, 39, 50),
-        "versionrag_dogfood_retrieval_eval_v2.json": (5, 15, 24),
-    }
-
-    for filename, counts in expected_counts.items():
-        dataset = load_script().load_dataset(Path("data/evals") / filename)
-        question_count = len(dataset.examples)
-        fact_count = sum(len(example.required_facts) for example in dataset.examples)
-        locator_count = sum(
-            len(fact.acceptable_evidence)
-            for example in dataset.examples
-            for fact in example.required_facts
-        )
-
-        assert dataset.schema_version == 2
-        assert (question_count, fact_count, locator_count) == counts
+    assert dataset.schema_version == 2
+    assert len(dataset.examples) == 1
+    assert [fact.fact_id for fact in dataset.examples[0].required_facts] == [
+        "retention_period",
+        "approval_role",
+    ]

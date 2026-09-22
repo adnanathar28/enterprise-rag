@@ -18,6 +18,10 @@ env/
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+secrets/
 
 # Build artifacts
 build/
@@ -38,10 +42,17 @@ Thumbs.db
 data/samples/*
 data/parsed/*
 data/outputs/*
+data/evals/*
 data/source_files/*
+docs/docling-inspection-findings.md
 !data/samples/.gitkeep
 !data/parsed/.gitkeep
 !data/outputs/.gitkeep
+*.pdf
+*.docx
+*.sqlite
+*.sqlite3
+*.db
 
 # Logs
 *.log

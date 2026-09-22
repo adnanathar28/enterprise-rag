@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "brd-knowledge"
 version = "0.1.0"
-description = "BRD document ingestion and normalized structure extraction service."
+description = "Document-grounded PDF question answering with retrieval and source citations."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 authors = [
-  { name = "BRD Knowledge Team" }
+  { name = "Knowledge contributors" }
 ]
 dependencies = [
   "alembic>=1.13.0",

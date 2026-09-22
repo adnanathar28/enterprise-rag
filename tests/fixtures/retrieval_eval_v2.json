@@ -1,0 +1,34 @@
+{
+  "name": "Synthetic retrieval evaluation example",
+  "schema_version": 2,
+  "examples": [
+    {
+      "question": "How long are records kept, and who approves deletion?",
+      "expected_document_id": "synthetic-policy",
+      "required_facts": [
+        {
+          "fact_id": "retention_period",
+          "description": "Records are kept for seven years.",
+          "acceptable_evidence": [
+            {
+              "section_path": ["Records", "Retention"],
+              "pages": [2],
+              "text_anchors": ["Records are retained for seven years"]
+            }
+          ]
+        },
+        {
+          "fact_id": "approval_role",
+          "description": "The records manager approves deletion.",
+          "acceptable_evidence": [
+            {
+              "section_path": ["Records", "Deletion"],
+              "pages": [3],
+              "text_anchors": ["The records manager approves deletion"]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
