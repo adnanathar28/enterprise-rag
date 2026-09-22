@@ -132,14 +132,6 @@ The development loop was:
 
 For example, cross-encoder reranking was introduced only after the dense retrieval baseline had been measured and its failure cases analyzed.
 
-## Current Limitations
-
-Knowledge is a production-style engineering project, not a fully production-hardened multi-user service.
-
-Current limitations include synchronous document ingestion, no multi-user authorization, no deployment-level rate or concurrency controls, and limited end-to-end evaluation. Selected document evidence is also transmitted to the configured external generation provider.
-
-Citation validation verifies evidence IDs and provenance, but does not by itself guarantee that every generated claim is semantically supported.
-
 ## License
 
 MIT
